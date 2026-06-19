@@ -130,13 +130,13 @@ def make_redshift_stratification_bins(
 
 def split_train_validation_from_a(
     a_df: pd.DataFrame,
-    validation_size: float = 0.15,
+    validation_size: float = 0.20,
     random_state: int = 42,
     stratify_by_redshift: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Divide o conjunto A em treino e validacao.
 
-    A sugestao inicial e usar 85% do A para treino e 15% para validacao. B, C
+    A sugestao inicial e usar 80% do A para treino e 20% para validacao. B, C
     e D ficam completamente fora desse split e sao usados apenas como teste.
     """
 
@@ -328,7 +328,7 @@ def preprocess_train_val_test(
 def preprocess_dataset_a_b_c_d(
     dataset_name: str,
     raw_dir: str | Path = RAW_DATA_DIR,
-    validation_size: float = 0.15,
+    validation_size: float = 0.20,
     random_state: int = 42,
     stratify_by_redshift: bool = True,
 ) -> tuple[
@@ -394,7 +394,7 @@ def preprocess_dataset_a_b_c_d(
 
 def preprocess_happy_a_b_c_d(
     raw_dir: str | Path = RAW_DATA_DIR,
-    validation_size: float = 0.15,
+    validation_size: float = 0.20,
     random_state: int = 42,
     stratify_by_redshift: bool = True,
 ) -> tuple[
@@ -501,8 +501,8 @@ def main() -> None:
     parser.add_argument(
         "--validation-size",
         type=float,
-        default=0.15,
-        help="Fracao do conjunto A usada para validacao. Exemplo: 0.15.",
+        default=0.20,
+        help="Fracao do conjunto A usada para validacao. Exemplo: 0.20.",
     )
     parser.add_argument(
         "--random-state",
