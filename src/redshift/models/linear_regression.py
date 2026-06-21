@@ -80,7 +80,13 @@ def run_experiment(
     X_eval, y_eval = get_eval_data(eval_split, X_val, y_val, X_test, y_test)
     validate_feature_columns(X_eval, feature_cols)
 
-    model = train_linear_regression(X_train, y_train, feature_cols)
+    X_fit = X_train
+    y_fit = y_train
+    if eval_split == "test":
+        X_fit = pd.concat([X_train, X_val], axis=0, ignore_index=True)
+        y_fit = pd.concat([y_train, y_val], axis=0, ignore_index=True)
+
+    model = train_linear_regression(X_fit, y_fit, feature_cols)
     eval_pred = model.predict(X_eval.loc[:, feature_cols])
 
     experiment_name = f"{MODEL_NAME}_{feature_set}"

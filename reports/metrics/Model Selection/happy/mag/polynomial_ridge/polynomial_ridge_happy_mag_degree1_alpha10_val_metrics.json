@@ -17,17 +17,22 @@
   "model_params": {
     "degree": 1,
     "include_bias": false,
-    "alpha": 10
+    "alpha": 10,
+    "feature_transform": [
+      "PolynomialFeatures",
+      "log1p",
+      "StandardScaler"
+    ]
   },
-  "created_at_utc": "23:52",
+  "created_at_utc": "06:43",
   "metrics": {
-    "val_mae": 0.04726936868317867,
-    "val_rmse": 0.07034572585537287,
-    "val_r2": 0.8873090481284573,
-    "val_bias": -0.002642721992731189,
+    "val_mae": 0.0465734159610441,
+    "val_rmse": 0.06959047836014347,
+    "val_r2": 0.8897158093195836,
+    "val_bias": -0.0028136593032358046,
     "val_n": 14990,
-    "val_negative_redshift_predictions": 229,
-    "val_catastrophic_outlier_fraction": 0.01581054036024016,
+    "val_negative_redshift_predictions": 292,
+    "val_catastrophic_outlier_fraction": 0.016144096064042695,
     "val_catastrophic_outlier_threshold": 0.15
   }
 }

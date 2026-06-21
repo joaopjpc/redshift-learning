@@ -1,5 +1,4 @@
-"""Busca de hiperparametros para Polynomial Ridge."""
-
+"""Busca em grade para Polynomial Ridge no split de validacao. Faz uma busca em grade de hiperparametros (grau e alpha) para o modelo Polynomial Ridge, usando o split de validacao. Salva uma tabela resumo com as metricas de cada combinacao testada."""
 from __future__ import annotations
 
 import argparse
@@ -17,18 +16,18 @@ from redshift.models.polynomial_ridge import (  # noqa: E402
     METRICS_DIR,
     MODEL_NAME,
     MODELS_DIR,
+    RAW_DATA_DIR,
     run_experiment,
 )
 from redshift.utils.modeling import (  # noqa: E402
     FEATURE_SETS,
-    PROCESSED_DATA_DIR,
     TABLES_DIR,
     table_output_path,
 )
 
 
-DEFAULT_DEGREES = [1, 2, 3]
-DEFAULT_ALPHAS = [1, 10, 100, 1000, 10000, 100000]
+DEFAULT_DEGREES = [1, 2]
+DEFAULT_ALPHAS = [0.1, 0.5, 1, 2, 5, 10, 50, 100, 1000]
 
 
 def summarize_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
@@ -65,7 +64,7 @@ def run_search(
     eval_split: str = "val",
     degrees: list[int] | None = None,
     alphas: list[float] | None = None,
-    processed_data_dir: Path = PROCESSED_DATA_DIR,
+    raw_data_dir: Path = RAW_DATA_DIR,
     models_dir: Path = MODELS_DIR,
     metrics_dir: Path = METRICS_DIR,
     tables_dir: Path = TABLES_DIR,
@@ -84,14 +83,14 @@ def run_search(
                 eval_split=eval_split,
                 degree=degree,
                 alpha=alpha,
-                processed_data_dir=processed_data_dir,
+                raw_data_dir=raw_data_dir,
                 models_dir=models_dir,
                 metrics_dir=metrics_dir,
             )
             rows.append(summarize_metrics(metrics))
 
     results = pd.DataFrame(rows).sort_values(
-        by=["mae", "rmse"],
+        by=["rmse", "mae"],
         ascending=[True, True],
     )
 
@@ -148,10 +147,10 @@ def parse_args() -> argparse.Namespace:
         help="Valores de alpha testados no Ridge.",
     )
     parser.add_argument(
-        "--processed-data-dir",
+        "--raw-data-dir",
         type=Path,
-        default=PROCESSED_DATA_DIR,
-        help="Diretorio base com datasets processados.",
+        default=RAW_DATA_DIR,
+        help="Diretorio base com datasets brutos.",
     )
     parser.add_argument(
         "--models-dir",
@@ -185,13 +184,13 @@ def main() -> None:
         eval_split=args.eval_split,
         degrees=args.degrees,
         alphas=args.alphas,
-        processed_data_dir=args.processed_data_dir,
+        raw_data_dir=args.raw_data_dir,
         models_dir=args.models_dir,
         metrics_dir=args.metrics_dir,
         tables_dir=args.tables_dir,
     )
 
-    print("Melhores combinacoes por MAE:")
+    print("Melhores combinacoes por RMSE:")
     print(results.head(10).to_string(index=False))
 
 

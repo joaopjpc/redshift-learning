@@ -19,7 +19,7 @@ src/redshift/
 
 `utils/modeling.py` concentra codigo comum aos modelos:
 
-- leitura de `data/processed/<dataset>/`;
+- leitura de `data/processed/<dataset>/` para modelos que usam os splits ja preprocessados;
 - selecao de features `mag` ou `mag_err`;
 - selecao de split de avaliacao `val` ou `test`;
 - caminhos padronizados para modelos `.joblib`;
@@ -59,11 +59,20 @@ avalia em: validation
 `--eval-split test` deve ser usado apenas para avaliacao final.
 
 ```text
-treina em: train
+treina em: train + validation
 avalia em: test externo
 ```
 
-Por decisao do projeto, mesmo em `--eval-split test`, o conjunto de validacao nao e adicionado ao treino.
+Em outras palavras:
+
+- `val`: o modelo e ajustado apenas em `X_train` e comparado em `X_val`;
+- `test`: depois da selecao do modelo, o ajuste final usa `X_train + X_val` e a avaliacao acontece em `X_test`.
+
+Se o split escolhido estiver vazio ou incompleto, a execucao falha com erro explicito.
+Isso e importante especialmente para datasets em que `y_test.csv` possa estar ausente ou vazio:
+
+- `--eval-split val` continua funcionando, pois `y_test` nao e usado;
+- `--eval-split test` exige `X_test` e `y_test` validos.
 
 ## Metricas
 
@@ -111,6 +120,13 @@ reports/metrics/Model Selection/happy/mag_err/polynomial_ridge/
 reports/metrics/Tests/teddy/mag/polynomial_ridge/
 ```
 
+Os arquivos `.json` de metricas incluem o dataset no nome. Exemplos:
+
+```text
+linear_regression_happy_mag_val_metrics.json
+polynomial_ridge_teddy_mag_err_degree2_alpha10_val_metrics.json
+```
+
 ## Organizacao dos modelos
 
 Os artefatos `.joblib` sao salvos em:
@@ -150,6 +166,8 @@ Script:
 src/redshift/models/linear_regression.py
 ```
 
+A regressao linear continua usando diretamente os arquivos de `data/processed/<dataset>/`.
+
 Rodar MAG em validacao:
 
 ```powershell
@@ -182,10 +200,34 @@ Script:
 src/redshift/models/polynomial_ridge.py
 ```
 
+O pipeline do Polynomial Ridge foi invertido.
+
+Antes:
+
+```text
+dados preprocessados -> PolynomialFeatures -> Ridge
+```
+
+Agora:
+
+```text
+dados brutos -> PolynomialFeatures -> log1p nas features expandidas -> StandardScaler -> Ridge
+```
+
+O alvo continua sendo transformado com `log1p(redshift)`.
+
+Por isso, diferentemente da regressao linear, o `polynomial_ridge.py` nao depende mais de `data/processed/<dataset>/` para montar as features de entrada. Ele recria internamente os splits a partir de `data/raw/`, usando:
+
+- `A` para `train/validation`;
+- `B + C + D` para `test`;
+- o mesmo split estratificado de `A` para separar `train` e `validation`.
+
 O modelo usa:
 
 ```python
 PolynomialFeatures(degree=degree, include_bias=False)
+FunctionTransformer(np.log1p, validate=False)
+StandardScaler()
 Ridge(alpha=alpha)
 ```
 
@@ -199,6 +241,12 @@ Com MAG+ERR:
 
 ```powershell
 .\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag_err --eval-split val --degree 2 --alpha 1
+```
+
+Se quiser apontar outra pasta com os arquivos brutos:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag --eval-split val --degree 2 --alpha 1 --raw-data-dir data\raw
 ```
 
 Cada execucao do `polynomial_ridge.py` tambem salva automaticamente um grafico `.png` com:
@@ -218,7 +266,7 @@ Grid padrao:
 
 ```python
 degrees = [1, 2, 3]
-alphas = [1, 10, 100, 1000, 10000, 100000]
+alphas = [0.1, 0.5, 1, 2, 5, 10, 50, 100, 1000]
 ```
 
 Rodar busca em MAG:
@@ -239,11 +287,17 @@ Customizar a grade:
 .\.venv\Scripts\python.exe src\redshift\training\search_polynomial_ridge.py --dataset happyT --feature-set mag --eval-split val --degrees 1 2 3 --alphas 1 10 100
 ```
 
+Se quiser usar outra pasta com os arquivos brutos:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\training\search_polynomial_ridge.py --dataset happyT --feature-set mag --eval-split val --raw-data-dir data\raw
+```
+
 A busca salva:
 
 - JSON individual para cada combinacao em `reports/metrics/...`;
 - grafico individual para cada combinacao em `reports/figures/...`;
-- tabela resumo ordenada por `mae` e depois `rmse` em `reports/tables/...`.
+- tabela resumo ordenada por `rmse` e depois `mae` em `reports/tables/...`.
 
 Exemplo de tabela:
 

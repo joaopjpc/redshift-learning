@@ -1,0 +1,36 @@
+{
+  "experiment_name": "linear_regression_mag_err",
+  "dataset": "teddyT",
+  "model": "LinearRegression",
+  "feature_set": "mag_err",
+  "eval_split": "test",
+  "evaluation_purpose": "final_evaluation",
+  "target": "log1p(redshift)",
+  "features": [
+    "u",
+    "g",
+    "r",
+    "i",
+    "z",
+    "uErr",
+    "gErr",
+    "rErr",
+    "iErr",
+    "zErr"
+  ],
+  "n_features": 10,
+  "model_params": {
+    "fit_intercept": true
+  },
+  "created_at_utc": "03:25",
+  "metrics": {
+    "test_mae": 0.03483954421618823,
+    "test_rmse": 0.1509024026513643,
+    "test_r2": -0.09354575528841003,
+    "test_bias": 0.0033639778369319697,
+    "test_n": 248464,
+    "test_negative_redshift_predictions": 682,
+    "test_catastrophic_outlier_fraction": 0.006938630948547879,
+    "test_catastrophic_outlier_threshold": 0.15
+  }
+}

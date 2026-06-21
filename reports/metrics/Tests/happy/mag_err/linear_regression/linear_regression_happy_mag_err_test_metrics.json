@@ -1,0 +1,36 @@
+{
+  "experiment_name": "linear_regression_mag_err",
+  "dataset": "happyT",
+  "model": "LinearRegression",
+  "feature_set": "mag_err",
+  "eval_split": "test",
+  "evaluation_purpose": "final_evaluation",
+  "target": "log1p(redshift)",
+  "features": [
+    "u",
+    "g",
+    "r",
+    "i",
+    "z",
+    "uErr",
+    "gErr",
+    "rErr",
+    "iErr",
+    "zErr"
+  ],
+  "n_features": 10,
+  "model_params": {
+    "fit_intercept": true
+  },
+  "created_at_utc": "03:25",
+  "metrics": {
+    "test_mae": 0.08868777273015212,
+    "test_rmse": 0.1612762127227739,
+    "test_r2": 0.4241457954213885,
+    "test_bias": 0.0002886504590050371,
+    "test_n": 209857,
+    "test_negative_redshift_predictions": 1021,
+    "test_catastrophic_outlier_fraction": 0.09100006194694482,
+    "test_catastrophic_outlier_threshold": 0.15
+  }
+}
