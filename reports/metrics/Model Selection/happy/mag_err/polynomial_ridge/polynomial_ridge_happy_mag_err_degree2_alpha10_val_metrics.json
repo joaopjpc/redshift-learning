@@ -1,0 +1,38 @@
+{
+  "experiment_name": "polynomial_ridge_mag_err_degree2_alpha10",
+  "dataset": "happyT",
+  "model": "PolynomialFeatures+Ridge",
+  "feature_set": "mag_err",
+  "eval_split": "val",
+  "evaluation_purpose": "model_selection",
+  "target": "log1p(redshift)",
+  "features": [
+    "u",
+    "g",
+    "r",
+    "i",
+    "z",
+    "uErr",
+    "gErr",
+    "rErr",
+    "iErr",
+    "zErr"
+  ],
+  "n_features": 10,
+  "model_params": {
+    "degree": 2,
+    "include_bias": false,
+    "alpha": 10
+  },
+  "created_at_utc": "23:53",
+  "metrics": {
+    "val_mae": 0.037009853723699686,
+    "val_rmse": 0.0785028737320159,
+    "val_r2": 0.8596589481909567,
+    "val_bias": -0.001050758757689359,
+    "val_n": 14990,
+    "val_negative_redshift_predictions": 47,
+    "val_catastrophic_outlier_fraction": 0.01180787191460974,
+    "val_catastrophic_outlier_threshold": 0.15
+  }
+}

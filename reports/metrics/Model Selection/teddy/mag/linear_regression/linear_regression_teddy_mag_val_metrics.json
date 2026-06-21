@@ -1,0 +1,31 @@
+{
+  "experiment_name": "linear_regression_mag",
+  "dataset": "teddyT",
+  "model": "LinearRegression",
+  "feature_set": "mag",
+  "eval_split": "val",
+  "evaluation_purpose": "model_selection",
+  "target": "log1p(redshift)",
+  "features": [
+    "u",
+    "g",
+    "r",
+    "i",
+    "z"
+  ],
+  "n_features": 5,
+  "model_params": {
+    "fit_intercept": true
+  },
+  "created_at_utc": "01:37",
+  "metrics": {
+    "val_mae": 0.026826524666086208,
+    "val_rmse": 0.03892827163136276,
+    "val_r2": 0.8054098092811609,
+    "val_bias": -0.000979351121318707,
+    "val_n": 14862,
+    "val_negative_redshift_predictions": 0,
+    "val_catastrophic_outlier_fraction": 0.0010092854259184498,
+    "val_catastrophic_outlier_threshold": 0.15
+  }
+}

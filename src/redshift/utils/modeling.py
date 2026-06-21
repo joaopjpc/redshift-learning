@@ -10,12 +10,14 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+from pandas.errors import EmptyDataError
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 MODELS_DIR = PROJECT_ROOT / "models"
+FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
 METRICS_DIR = PROJECT_ROOT / "reports" / "metrics"
 TABLES_DIR = PROJECT_ROOT / "reports" / "tables"
 
@@ -42,9 +44,14 @@ CATASTROPHIC_OUTLIER_THRESHOLD = 0.15
 
 
 def model_artifacts_dir(model_name: str) -> Path:
-    """Retorna a pasta padrao para artefatos de um modelo."""
+    """Retorna a pasta raiz para artefatos de modelos.
 
-    return MODELS_DIR / model_name
+    O argumento e mantido para usar a mesma assinatura dos scripts de modelo,
+    mas a organizacao final fica:
+    models/Model Selection ou Tests/dataset/feature_set/modelo.
+    """
+
+    return MODELS_DIR
 
 
 def model_metrics_dir(model_name: str) -> Path:
@@ -56,6 +63,17 @@ def model_metrics_dir(model_name: str) -> Path:
     """
 
     return METRICS_DIR
+
+
+def model_figures_dir(model_name: str) -> Path:
+    """Retorna a pasta raiz das figuras.
+
+    O argumento e mantido para usar a mesma assinatura dos scripts de modelo,
+    mas a organizacao final fica:
+    figures/Model Selection ou Tests/dataset/feature_set/model.
+    """
+
+    return FIGURES_DIR
 
 
 def dataset_metrics_dir_name(dataset: str) -> str:
@@ -112,6 +130,54 @@ def table_output_path(
     )
 
 
+def model_output_path(
+    models_dir: Path,
+    eval_split: str,
+    feature_set: str,
+    model_name: str,
+    dataset: str,
+    filename: str,
+) -> Path:
+    """Monta o caminho padrao de artefatos para um experimento."""
+
+    if eval_split not in EVAL_SPLIT_METRICS_DIRS:
+        available = ", ".join(EVAL_SPLIT_METRICS_DIRS)
+        raise ValueError(f"Split de avaliacao invalido: {eval_split}. Opcoes: {available}")
+
+    return (
+        models_dir
+        / EVAL_SPLIT_METRICS_DIRS[eval_split]
+        / dataset_metrics_dir_name(dataset)
+        / feature_set
+        / model_name
+        / filename
+    )
+
+
+def figure_output_path(
+    figures_dir: Path,
+    eval_split: str,
+    feature_set: str,
+    model_name: str,
+    dataset: str,
+    filename: str,
+) -> Path:
+    """Monta o caminho padrao de figuras para um experimento."""
+
+    if eval_split not in EVAL_SPLIT_METRICS_DIRS:
+        available = ", ".join(EVAL_SPLIT_METRICS_DIRS)
+        raise ValueError(f"Split de avaliacao invalido: {eval_split}. Opcoes: {available}")
+
+    return (
+        figures_dir
+        / EVAL_SPLIT_METRICS_DIRS[eval_split]
+        / dataset_metrics_dir_name(dataset)
+        / feature_set
+        / model_name
+        / filename
+    )
+
+
 def load_processed_split(
     dataset_dir: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
@@ -122,7 +188,10 @@ def load_processed_split(
     X_test = pd.read_csv(dataset_dir / "X_test.csv")
     y_train = pd.read_csv(dataset_dir / "y_train.csv").squeeze("columns")
     y_val = pd.read_csv(dataset_dir / "y_val.csv").squeeze("columns")
-    y_test = pd.read_csv(dataset_dir / "y_test.csv").squeeze("columns")
+    try:
+        y_test = pd.read_csv(dataset_dir / "y_test.csv").squeeze("columns")
+    except EmptyDataError:
+        y_test = pd.Series(dtype=float, name="redshift")
 
     return X_train, X_val, X_test, y_train, y_val, y_test
 
@@ -162,7 +231,14 @@ def get_eval_data(
         available = ", ".join(eval_data)
         raise ValueError(f"Split de avaliacao invalido: {eval_split}. Opcoes: {available}")
 
-    return eval_data[eval_split]
+    X_eval, y_eval = eval_data[eval_split]
+    if X_eval.empty or y_eval.empty:
+        raise ValueError(
+            f"Split de avaliacao '{eval_split}' esta vazio ou incompleto. "
+            "Verifique os arquivos processados desse dataset."
+        )
+
+    return X_eval, y_eval
 
 
 def regression_metrics(

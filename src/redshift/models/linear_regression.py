@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
@@ -18,23 +19,29 @@ from redshift.utils.modeling import (
     FEATURE_SETS,
     PROCESSED_DATA_DIR,
     build_metadata,
+    dataset_metrics_dir_name,
     evaluate_predictions,
+    figure_output_path,
     get_eval_data,
     get_feature_cols,
     load_processed_split,
     metrics_output_path,
     model_artifacts_dir,
+    model_output_path,
+    model_figures_dir,
     model_metrics_dir,
     print_regression_summary,
     save_json,
     save_model_artifact,
     validate_feature_columns,
 )
+from redshift.evaluation.plots import save_redshift_residual_plot
 
 
 MODEL_NAME = "linear_regression"
 MODEL_LABEL = "LinearRegression"
 MODELS_DIR = model_artifacts_dir(MODEL_NAME)
+FIGURES_DIR = model_figures_dir(MODEL_NAME)
 METRICS_DIR = model_metrics_dir(MODEL_NAME)
 
 
@@ -59,6 +66,7 @@ def run_experiment(
     eval_split: str = "val",
     processed_data_dir: Path = PROCESSED_DATA_DIR,
     models_dir: Path = MODELS_DIR,
+    figures_dir: Path = FIGURES_DIR,
     metrics_dir: Path = METRICS_DIR,
 ) -> dict[str, Any]:
     """Executa o experimento de Regressao Linear e salva artefatos."""
@@ -94,7 +102,14 @@ def run_experiment(
         model=model,
         feature_cols=feature_cols,
         metadata=metadata,
-        path=models_dir / dataset / eval_split / f"{experiment_name}_{eval_split}.joblib",
+        path=model_output_path(
+            models_dir=models_dir,
+            eval_split=eval_split,
+            feature_set=feature_set,
+            model_name=MODEL_NAME,
+            dataset=dataset,
+            filename=f"{experiment_name}_{eval_split}.joblib",
+        ),
     )
     save_json(
         metrics,
@@ -104,8 +119,24 @@ def run_experiment(
             feature_set=feature_set,
             model_name=MODEL_NAME,
             dataset=dataset,
-            filename=f"{experiment_name}_{eval_split}_metrics.json",
+            filename=(
+                f"{MODEL_NAME}_{dataset_metrics_dir_name(dataset)}_"
+                f"{feature_set}_{eval_split}_metrics.json"
+            ),
         ),
+    )
+    save_redshift_residual_plot(
+        y_true=np.expm1(y_eval),
+        y_pred=np.expm1(eval_pred),
+        path=figure_output_path(
+            figures_dir=figures_dir,
+            eval_split=eval_split,
+            feature_set=feature_set,
+            model_name=MODEL_NAME,
+            dataset=dataset,
+            filename=f"{experiment_name}_{eval_split}_residuals.png",
+        ),
+        title=f"{MODEL_LABEL} | {dataset} | {feature_set} | {eval_split}",
     )
 
     return metrics
@@ -153,6 +184,12 @@ def parse_args() -> argparse.Namespace:
         default=METRICS_DIR,
         help="Diretorio para salvar metricas.",
     )
+    parser.add_argument(
+        "--figures-dir",
+        type=Path,
+        default=FIGURES_DIR,
+        help="Diretorio para salvar figuras de avaliacao.",
+    )
 
     return parser.parse_args()
 
@@ -167,6 +204,7 @@ def main() -> None:
         eval_split=args.eval_split,
         processed_data_dir=args.processed_data_dir,
         models_dir=args.models_dir,
+        figures_dir=args.figures_dir,
         metrics_dir=args.metrics_dir,
     )
     print_regression_summary(metrics)

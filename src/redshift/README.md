@@ -6,6 +6,8 @@ Este README documenta apenas os scripts de modelagem e selecao de modelos criado
 
 ```text
 src/redshift/
+  evaluation/
+    plots.py
   models/
     linear_regression.py
     polynomial_ridge.py
@@ -20,10 +22,16 @@ src/redshift/
 - leitura de `data/processed/<dataset>/`;
 - selecao de features `mag` ou `mag_err`;
 - selecao de split de avaliacao `val` ou `test`;
+- caminhos padronizados para modelos `.joblib`;
 - metricas na escala original do redshift;
-- salvamento de modelos `.joblib`;
+- caminhos padronizados para figuras `.png`;
 - salvamento de metricas `.json`;
 - caminhos padronizados para tabelas `.csv`.
+
+`evaluation/plots.py` concentra visualizacoes de avaliacao. No momento, ele salva um grafico com:
+
+- dispersao de redshift real vs previsto;
+- dispersao de residuos (`previsto - real`) vs redshift previsto.
 
 ## Feature sets
 
@@ -103,6 +111,37 @@ reports/metrics/Model Selection/happy/mag_err/polynomial_ridge/
 reports/metrics/Tests/teddy/mag/polynomial_ridge/
 ```
 
+## Organizacao dos modelos
+
+Os artefatos `.joblib` sao salvos em:
+
+```text
+models/<Model Selection ou Tests>/<dataset>/<feature_set>/<modelo>/
+```
+
+Exemplos:
+
+```text
+models/Model Selection/happy/mag/linear_regression/
+models/Model Selection/happy/mag_err/polynomial_ridge/
+models/Tests/teddy/mag/linear_regression/
+```
+
+## Organizacao das figuras
+
+Os graficos de avaliacao sao salvos em:
+
+```text
+reports/figures/<Model Selection ou Tests>/<dataset>/<feature_set>/<modelo>/
+```
+
+Exemplos:
+
+```text
+reports/figures/Model Selection/happy/mag/linear_regression/
+reports/figures/Model Selection/happy/mag_err/polynomial_ridge/
+```
+
 ## Regressao Linear
 
 Script:
@@ -128,6 +167,12 @@ Rodar avaliacao final em teste:
 ```powershell
 .\.venv\Scripts\python.exe src\redshift\models\linear_regression.py --dataset happyT --feature-set mag --eval-split test
 ```
+
+Saidas geradas por execucao:
+
+- modelo `.joblib` em `models/...`;
+- metricas `.json` em `reports/metrics/...`;
+- grafico de residuos `.png` em `reports/figures/...`.
 
 ## Polynomial Ridge
 
@@ -155,6 +200,11 @@ Com MAG+ERR:
 ```powershell
 .\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag_err --eval-split val --degree 2 --alpha 1
 ```
+
+Cada execucao do `polynomial_ridge.py` tambem salva automaticamente um grafico `.png` com:
+
+- redshift real vs previsto;
+- residuos (`previsto - real`) vs previsto.
 
 ## Busca de hiperparametros do Polynomial Ridge
 
@@ -192,6 +242,7 @@ Customizar a grade:
 A busca salva:
 
 - JSON individual para cada combinacao em `reports/metrics/...`;
+- grafico individual para cada combinacao em `reports/figures/...`;
 - tabela resumo ordenada por `mae` e depois `rmse` em `reports/tables/...`.
 
 Exemplo de tabela:
