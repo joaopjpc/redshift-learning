@@ -38,6 +38,7 @@ from redshift.utils.modeling import (
     validate_feature_columns,
 )
 from redshift.evaluation.plots import save_redshift_residual_plot
+from redshift.evaluation.slices import build_slice_metrics
 
 
 MODEL_NAME = "polynomial_ridge"
@@ -136,6 +137,14 @@ def run_experiment(
         **metadata,
         "metrics": evaluate_predictions(y_eval, eval_pred, eval_split),
     }
+    if eval_split == "test":
+        metrics["slice_metrics"] = build_slice_metrics(
+            X_eval_processed=X_eval,
+            y_true_log=y_eval,
+            y_pred_log=eval_pred,
+            split_name=eval_split,
+            dataset_dir=dataset_dir,
+        )
 
     save_model_artifact(
         model=model,

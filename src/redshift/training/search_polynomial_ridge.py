@@ -181,9 +181,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--eval-split",
-        choices=["val", "test"],
+        choices=["val"],
         default="val",
-        help="Split usado para avaliacao. Para busca, use val.",
+        help="Split usado para avaliacao. A busca de hiperparametros deve usar apenas val.",
     )
     parser.add_argument(
         "--degrees",
