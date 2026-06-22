@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -17,7 +18,29 @@ def save_redshift_residual_plot(
     path: Path,
     title: str,
 ) -> None:
-    """Salva um grafico com real vs previsto e residuos na escala original."""
+    """Salva um grafico com real vs previsto e residuos na escala original.
+
+    A geracao da figura e tratada como nao-fatal: se a renderizacao falhar (por
+    exemplo, backend do matplotlib bloqueado pelo sistema operacional), o erro e
+    apenas avisado e a execucao continua, preservando metricas, modelos e tabelas.
+    """
+
+    try:
+        _render_redshift_residual_plot(y_true, y_pred, path, title)
+    except Exception as error:  # noqa: BLE001 - figura nao deve derrubar o experimento
+        print(
+            f"[aviso] nao foi possivel salvar a figura {path}: {error}",
+            file=sys.stderr,
+        )
+
+
+def _render_redshift_residual_plot(
+    y_true: pd.Series | np.ndarray,
+    y_pred: pd.Series | np.ndarray,
+    path: Path,
+    title: str,
+) -> None:
+    """Renderiza e salva o grafico de avaliacao."""
 
     y_true_array = np.asarray(y_true)
     y_pred_array = np.asarray(y_pred)

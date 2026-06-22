@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer, PolynomialFeatures, StandardScaler
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
 SRC_DIR = Path(__file__).resolve().parents[2]
 if str(SRC_DIR) not in sys.path:
@@ -19,11 +19,14 @@ if str(SRC_DIR) not in sys.path:
 
 from redshift.utils.modeling import (
     FEATURE_SETS,
+    PROCESSED_DATA_DIR,
     build_metadata,
     dataset_metrics_dir_name,
     evaluate_predictions,
     figure_output_path,
+    get_eval_data,
     get_feature_cols,
+    load_processed_split,
     metrics_output_path,
     model_artifacts_dir,
     model_output_path,
@@ -35,13 +38,6 @@ from redshift.utils.modeling import (
     validate_feature_columns,
 )
 from redshift.evaluation.plots import save_redshift_residual_plot
-from redshift.data.preprocess import (
-    RAW_DATA_DIR,
-    load_raw_datasets,
-    split_features_target,
-    split_train_validation_from_a,
-    transform_target,
-)
 
 
 MODEL_NAME = "polynomial_ridge"
@@ -62,10 +58,12 @@ def train_polynomial_ridge(
 
     validate_feature_columns(X_train, feature_cols)
 
+    # As features ja chegam pre-processadas de data/processed (log1p nos erros e
+    # StandardScaler nas magnitudes). Aqui apenas expandimos em termos polinomiais
+    # e re-escalamos para que a penalidade L2 do Ridge seja uniforme entre eles.
     model = Pipeline(
         steps=[
             ("poly", PolynomialFeatures(degree=degree, include_bias=False)),
-            ("log1p", FunctionTransformer(np.log1p, validate=False)),
             ("scaler", StandardScaler()),
             ("ridge", Ridge(alpha=alpha)),
         ]
@@ -81,38 +79,31 @@ def run_experiment(
     eval_split: str = "val",
     degree: int = 2,
     alpha: float = 1.0,
-    raw_data_dir: Path = RAW_DATA_DIR,
+    processed_data_dir: Path = PROCESSED_DATA_DIR,
     models_dir: Path = MODELS_DIR,
     figures_dir: Path = FIGURES_DIR,
     metrics_dir: Path = METRICS_DIR,
 ) -> dict[str, Any]:
-    """Executa o experimento Polynomial Ridge e salva artefatos."""
+    """Executa o experimento Polynomial Ridge e salva artefatos.
 
-    train_val_df, test_dfs = load_raw_datasets(dataset_name=dataset, raw_dir=raw_data_dir)
-    train_df, val_df = split_train_validation_from_a(train_val_df)
-    test_df = pd.concat(test_dfs.values(), axis=0, ignore_index=True)
+    Usa os splits ja pre-processados em data/processed/<dataset> (log1p nos erros
+    e no alvo, StandardScaler nas magnitudes), assim como a regressao linear.
+    """
 
-    X_train, y_train_raw = split_features_target(train_df)
-    X_val, y_val_raw = split_features_target(val_df)
-    X_test, y_test_raw = split_features_target(test_df)
+    dataset_dir = processed_data_dir / dataset
+    if not dataset_dir.exists():
+        raise FileNotFoundError(f"Pasta de dados processados nao encontrada: {dataset_dir}")
 
-    y_train = transform_target(y_train_raw)
-    y_val = transform_target(y_val_raw)
-    y_test = transform_target(y_test_raw)
+    X_train, X_val, X_test, y_train, y_val, y_test = load_processed_split(dataset_dir)
     feature_cols = get_feature_cols(feature_set)
-    validate_feature_columns(X_train, feature_cols)
-    validate_feature_columns(X_val, feature_cols)
-    validate_feature_columns(X_test, feature_cols)
+    X_eval, y_eval = get_eval_data(eval_split, X_val, y_val, X_test, y_test)
+    validate_feature_columns(X_eval, feature_cols)
 
     X_fit = X_train
     y_fit = y_train
-    X_eval = X_val
-    y_eval = y_val
     if eval_split == "test":
         X_fit = pd.concat([X_train, X_val], axis=0, ignore_index=True)
         y_fit = pd.concat([y_train, y_val], axis=0, ignore_index=True)
-        X_eval = X_test
-        y_eval = y_test
 
     model = train_polynomial_ridge(
         X_train=X_fit,
@@ -137,7 +128,6 @@ def run_experiment(
             "alpha": alpha,
             "feature_transform": [
                 "PolynomialFeatures",
-                "log1p",
                 "StandardScaler",
             ],
         },
@@ -228,10 +218,10 @@ def parse_args() -> argparse.Namespace:
         help="Forca da regularizacao Ridge.",
     )
     parser.add_argument(
-        "--raw-data-dir",
+        "--processed-data-dir",
         type=Path,
-        default=RAW_DATA_DIR,
-        help="Diretorio base com datasets brutos.",
+        default=PROCESSED_DATA_DIR,
+        help="Diretorio base com datasets processados.",
     )
     parser.add_argument(
         "--models-dir",
@@ -265,7 +255,7 @@ def main() -> None:
         eval_split=args.eval_split,
         degree=args.degree,
         alpha=args.alpha,
-        raw_data_dir=args.raw_data_dir,
+        processed_data_dir=args.processed_data_dir,
         models_dir=args.models_dir,
         figures_dir=args.figures_dir,
         metrics_dir=args.metrics_dir,

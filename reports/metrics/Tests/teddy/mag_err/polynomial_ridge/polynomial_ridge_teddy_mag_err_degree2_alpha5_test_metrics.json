@@ -1,5 +1,5 @@
 {
-  "experiment_name": "polynomial_ridge_mag_err_degree2_alpha0.1",
+  "experiment_name": "polynomial_ridge_mag_err_degree2_alpha5",
   "dataset": "teddyT",
   "model": "PolynomialFeatures+Ridge",
   "feature_set": "mag_err",
@@ -22,22 +22,23 @@
   "model_params": {
     "degree": 2,
     "include_bias": false,
-    "alpha": 0.1,
+    "alpha": 5.0,
     "feature_transform": [
       "PolynomialFeatures",
-      "log1p",
       "StandardScaler"
     ]
   },
-  "created_at_utc": "07:26",
+  "created_at_utc": "03:33",
   "metrics": {
-    "test_mae": 0.10935029445343503,
-    "test_rmse": 22.190100901349684,
-    "test_r2": -23645.30048032829,
-    "test_bias": 0.07736000608520405,
+    "test_mae": 10143708.163036777,
+    "test_rmse": 4024656594.6701264,
+    "test_r2": -7.778615592121615e+20,
+    "test_bias": 10143708.122250488,
     "test_n": 248464,
-    "test_negative_redshift_predictions": 772,
-    "test_catastrophic_outlier_fraction": 0.00802933221714212,
-    "test_catastrophic_outlier_threshold": 0.15
+    "test_negative_redshift_predictions": 974,
+    "test_catastrophic_outlier_fraction": 0.028712409041148818,
+    "test_catastrophic_outlier_threshold": 0.15,
+    "test_nmad": 0.022681864524843796,
+    "test_nmad_se": 6.482859280994365e-05
   }
 }

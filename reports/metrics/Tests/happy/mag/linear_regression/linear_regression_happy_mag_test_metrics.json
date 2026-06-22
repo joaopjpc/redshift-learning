@@ -17,7 +17,7 @@
   "model_params": {
     "fit_intercept": true
   },
-  "created_at_utc": "03:25",
+  "created_at_utc": "03:21",
   "metrics": {
     "test_mae": 0.09436458663906518,
     "test_rmse": 0.1446287427792398,
@@ -26,6 +26,8 @@
     "test_n": 209857,
     "test_negative_redshift_predictions": 1601,
     "test_catastrophic_outlier_fraction": 0.10029686882019662,
-    "test_catastrophic_outlier_threshold": 0.15
+    "test_catastrophic_outlier_threshold": 0.15,
+    "test_nmad": 0.06607448253966161,
+    "test_nmad_se": 0.00020961333893282
   }
 }

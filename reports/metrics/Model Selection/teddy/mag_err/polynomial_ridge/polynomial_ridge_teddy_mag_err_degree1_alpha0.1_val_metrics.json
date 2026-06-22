@@ -25,19 +25,20 @@
     "alpha": 0.1,
     "feature_transform": [
       "PolynomialFeatures",
-      "log1p",
       "StandardScaler"
     ]
   },
-  "created_at_utc": "06:48",
+  "created_at_utc": "03:25",
   "metrics": {
-    "val_mae": 0.026069183102361806,
-    "val_rmse": 0.038176235822088705,
-    "val_r2": 0.8128555684952267,
-    "val_bias": -0.0009431658755621009,
+    "val_mae": 0.026066247154371818,
+    "val_rmse": 0.03823756145599142,
+    "val_r2": 0.812253834527932,
+    "val_bias": -0.0009362633343306649,
     "val_n": 14862,
     "val_negative_redshift_predictions": 0,
-    "val_catastrophic_outlier_fraction": 0.0013457139012245996,
-    "val_catastrophic_outlier_threshold": 0.15
+    "val_catastrophic_outlier_fraction": 0.0014129995962858296,
+    "val_catastrophic_outlier_threshold": 0.15,
+    "val_nmad": 0.020570825648832527,
+    "val_nmad_se": 0.0002127733171820361
   }
 }

@@ -1,5 +1,0 @@
-No model Selection:
-Melhor hiperparametro de cada modelo pra:
-MAG
- Linear Regression Polinomial feature + ridge: degree 3 alpha 1
- 

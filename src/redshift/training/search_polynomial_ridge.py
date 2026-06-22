@@ -16,7 +16,7 @@ from redshift.models.polynomial_ridge import (  # noqa: E402
     METRICS_DIR,
     MODEL_NAME,
     MODELS_DIR,
-    RAW_DATA_DIR,
+    PROCESSED_DATA_DIR,
     run_experiment,
 )
 from redshift.utils.modeling import (  # noqa: E402
@@ -46,6 +46,8 @@ def summarize_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
         "alpha": model_params["alpha"],
         "mae": split_metrics[f"{eval_split}_mae"],
         "rmse": split_metrics[f"{eval_split}_rmse"],
+        "nmad": split_metrics[f"{eval_split}_nmad"],
+        "nmad_se": split_metrics[f"{eval_split}_nmad_se"],
         "r2": split_metrics[f"{eval_split}_r2"],
         "bias": split_metrics[f"{eval_split}_bias"],
         "n": split_metrics[f"{eval_split}_n"],
@@ -58,13 +60,67 @@ def summarize_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+SELECTION_METRIC = "nmad"
+SELECTION_SE_COLUMN = "nmad_se"
+
+
+def select_best_within_1se(
+    results: pd.DataFrame,
+    metric: str = SELECTION_METRIC,
+    se_column: str = SELECTION_SE_COLUMN,
+) -> pd.DataFrame:
+    """Ordena a busca pela regra de 1 desvio-padrao (one-standard-error rule).
+
+    A selecao usa o NMAD, dispersao robusta de photo-z, em vez do RMSE. O RMSE
+    e dominado por poucos outliers catastroficos e tende a apontar sempre o maior
+    degree e o menor alpha por uma margem dentro do ruido. A regra:
+
+    1. Acha a config de menor NMAD.
+    2. Usa como 1 SE o erro-padrao do NMAD dessa config, estimado por bootstrap
+       (coluna `nmad_se`), sem supor normalidade da distribuicao de dz.
+    3. Mantem todas as configs com NMAD <= melhor_NMAD + SE, ou seja,
+       estatisticamente indistinguiveis do melhor.
+    4. Dentre essas, escolhe a mais simples/regularizada: menor degree e, em
+       seguida, maior alpha. Degree menor e alpha maior extrapolam melhor sob
+       mudanca de distribuicao (B, C, D).
+
+    Acrescenta as colunas selection_metric, selection_se, selection_threshold,
+    within_1se e selected_1se, e ordena com a config recomendada no topo,
+    seguida das demais dentro da banda e, por fim, o restante pela metrica.
+    """
+
+    results = results.copy()
+
+    best_idx = results[metric].idxmin()
+    best_value = float(results.loc[best_idx, metric])
+    se = float(results.loc[best_idx, se_column])
+    threshold = best_value + se
+
+    results["selection_metric"] = metric
+    results["selection_se"] = se
+    results["selection_threshold"] = threshold
+    results["within_1se"] = results[metric] <= threshold
+
+    candidates = results[results["within_1se"]].sort_values(
+        by=["degree", "alpha"],
+        ascending=[True, False],
+    )
+    selected_name = candidates.iloc[0]["experiment_name"]
+    results["selected_1se"] = results["experiment_name"] == selected_name
+
+    return results.sort_values(
+        by=["selected_1se", "within_1se", metric, "mae"],
+        ascending=[False, False, True, True],
+    ).reset_index(drop=True)
+
+
 def run_search(
     dataset: str,
     feature_set: str = "mag",
     eval_split: str = "val",
     degrees: list[int] | None = None,
     alphas: list[float] | None = None,
-    raw_data_dir: Path = RAW_DATA_DIR,
+    processed_data_dir: Path = PROCESSED_DATA_DIR,
     models_dir: Path = MODELS_DIR,
     metrics_dir: Path = METRICS_DIR,
     tables_dir: Path = TABLES_DIR,
@@ -83,16 +139,13 @@ def run_search(
                 eval_split=eval_split,
                 degree=degree,
                 alpha=alpha,
-                raw_data_dir=raw_data_dir,
+                processed_data_dir=processed_data_dir,
                 models_dir=models_dir,
                 metrics_dir=metrics_dir,
             )
             rows.append(summarize_metrics(metrics))
 
-    results = pd.DataFrame(rows).sort_values(
-        by=["rmse", "mae"],
-        ascending=[True, True],
-    )
+    results = select_best_within_1se(pd.DataFrame(rows))
 
     output_path = table_output_path(
         tables_dir=tables_dir,
@@ -147,10 +200,10 @@ def parse_args() -> argparse.Namespace:
         help="Valores de alpha testados no Ridge.",
     )
     parser.add_argument(
-        "--raw-data-dir",
+        "--processed-data-dir",
         type=Path,
-        default=RAW_DATA_DIR,
-        help="Diretorio base com datasets brutos.",
+        default=PROCESSED_DATA_DIR,
+        help="Diretorio base com datasets processados.",
     )
     parser.add_argument(
         "--models-dir",
@@ -184,14 +237,29 @@ def main() -> None:
         eval_split=args.eval_split,
         degrees=args.degrees,
         alphas=args.alphas,
-        raw_data_dir=args.raw_data_dir,
+        processed_data_dir=args.processed_data_dir,
         models_dir=args.models_dir,
         metrics_dir=args.metrics_dir,
         tables_dir=args.tables_dir,
     )
 
-    print("Melhores combinacoes por RMSE:")
-    print(results.head(10).to_string(index=False))
+    selected = results[results["selected_1se"]].iloc[0]
+    best_nmad = results["nmad"].min()
+    print(
+        "Config escolhida pela regra de 1 desvio-padrao sobre o NMAD "
+        f"(degree={int(selected['degree'])}, alpha={selected['alpha']:g}):"
+    )
+    print(
+        f"  NMAD={selected['nmad']:.6f} | RMSE={selected['rmse']:.6f} | "
+        f"MAE={selected['mae']:.6f}"
+    )
+    print(
+        f"  menor NMAD da busca={best_nmad:.6f} | "
+        f"limite 1-SE={selected['selection_threshold']:.6f}"
+    )
+    print("\nConfigs dentro de 1 desvio-padrao do melhor NMAD:")
+    columns = ["degree", "alpha", "nmad", "rmse", "mae", "within_1se", "selected_1se"]
+    print(results.loc[results["within_1se"], columns].to_string(index=False))
 
 
 if __name__ == "__main__":

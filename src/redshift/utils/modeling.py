@@ -241,6 +241,42 @@ def get_eval_data(
     return X_eval, y_eval
 
 
+def normalized_median_abs_deviation(delta_z: np.ndarray) -> float:
+    """NMAD = 1.4826 * mediana(|dz - mediana(dz)|).
+
+    Dispersao robusta usada em photo-z. O fator 1.4826 faz o NMAD coincidir com
+    o desvio-padrao caso os dados fossem Gaussianos, mas sem ser afetado pelas
+    caudas pesadas / outliers catastroficos de dz.
+    """
+
+    delta_z = np.asarray(delta_z)
+    median = np.median(delta_z)
+    return float(1.4826 * np.median(np.abs(delta_z - median)))
+
+
+def bootstrap_standard_error(
+    values: np.ndarray,
+    statistic,
+    n_boot: int = 500,
+    seed: int = 42,
+) -> float:
+    """Erro-padrao de uma estatistica via bootstrap (reamostragem com reposicao).
+
+    Usado para o NMAD, cujo erro-padrao nao tem formula fechada simples sob a
+    distribuicao de cauda pesada de dz. Seed fixa para reprodutibilidade.
+    """
+
+    values = np.asarray(values)
+    n = len(values)
+    rng = np.random.default_rng(seed)
+    estimates = np.empty(n_boot)
+    for b in range(n_boot):
+        sample = values[rng.integers(0, n, n)]
+        estimates[b] = statistic(sample)
+
+    return float(np.std(estimates, ddof=1))
+
+
 def regression_metrics(
     y_true: pd.Series | np.ndarray,
     y_pred: np.ndarray,
@@ -270,9 +306,9 @@ def evaluate_predictions(
     y_true_redshift = np.expm1(y_true_log)
     y_pred_redshift = np.expm1(y_pred_log)
     metrics = regression_metrics(y_true_redshift, y_pred_redshift, split_name)
-    normalized_abs_error = np.abs(y_pred_redshift - y_true_redshift) / (
-        1 + y_true_redshift
-    )
+
+    delta_z = (y_pred_redshift - y_true_redshift) / (1 + y_true_redshift)
+    normalized_abs_error = np.abs(delta_z)
     catastrophic_outliers = (
         normalized_abs_error > CATASTROPHIC_OUTLIER_THRESHOLD
     )
@@ -282,6 +318,10 @@ def evaluate_predictions(
     )
     metrics[f"{split_name}_catastrophic_outlier_threshold"] = (
         CATASTROPHIC_OUTLIER_THRESHOLD
+    )
+    metrics[f"{split_name}_nmad"] = normalized_median_abs_deviation(delta_z)
+    metrics[f"{split_name}_nmad_se"] = bootstrap_standard_error(
+        delta_z, normalized_median_abs_deviation
     )
 
     return metrics

@@ -1,5 +1,5 @@
 {
-  "experiment_name": "polynomial_ridge_mag_err_degree2_alpha0.1",
+  "experiment_name": "polynomial_ridge_mag_err_degree2_alpha5",
   "dataset": "happyT",
   "model": "PolynomialFeatures+Ridge",
   "feature_set": "mag_err",
@@ -22,22 +22,23 @@
   "model_params": {
     "degree": 2,
     "include_bias": false,
-    "alpha": 0.1,
+    "alpha": 5.0,
     "feature_transform": [
       "PolynomialFeatures",
-      "log1p",
       "StandardScaler"
     ]
   },
-  "created_at_utc": "07:21",
+  "created_at_utc": "03:30",
   "metrics": {
-    "test_mae": 0.081524232234695,
-    "test_rmse": 0.13180651693068196,
-    "test_r2": 0.6153677663307159,
-    "test_bias": 0.0010029588673991542,
+    "test_mae": 0.1148612077510852,
+    "test_rmse": 13.437709928668806,
+    "test_r2": -3996.812611274542,
+    "test_bias": 0.03300015578529731,
     "test_n": 209857,
-    "test_negative_redshift_predictions": 497,
-    "test_catastrophic_outlier_fraction": 0.07736696893598975,
-    "test_catastrophic_outlier_threshold": 0.15
+    "test_negative_redshift_predictions": 562,
+    "test_catastrophic_outlier_fraction": 0.07772435515613013,
+    "test_catastrophic_outlier_threshold": 0.15,
+    "test_nmad": 0.051158037101867324,
+    "test_nmad_se": 0.00017269829992808423
   }
 }
