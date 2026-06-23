@@ -27,6 +27,8 @@ FEATURE_SETS = {
     "mag": MAG_FEATURES,
     "mag_err": MAG_FEATURES + ERR_FEATURES,
 }
+TEST_SETS = ("B", "C", "D")
+TEST_SET_CHOICES = (*TEST_SETS, "all")
 EVAL_SPLIT_PURPOSES = {
     "val": "model_selection",
     "test": "final_evaluation",
@@ -35,11 +37,15 @@ EVAL_SPLIT_METRICS_DIRS = {
     "val": "Model Selection",
     "test": "Tests",
 }
+EVAL_SPLIT_PROCESSED_DIRS = {
+    "val": "Val",
+    "test": "Test",
+}
 DATASET_METRICS_DIRS = {
     "happyT": "happy",
     "teddyT": "teddy",
 }
-TARGET_TRANSFORM = "log1p(redshift)"
+TARGET_TRANSFORM = "redshift"
 CATASTROPHIC_OUTLIER_THRESHOLD = 0.15
 
 
@@ -178,20 +184,70 @@ def figure_output_path(
     )
 
 
+def processed_dataset_dir(
+    processed_data_dir: Path,
+    eval_split: str,
+    dataset: str,
+) -> Path:
+    """Retorna a pasta processada correta para val ou test."""
+
+    if eval_split not in EVAL_SPLIT_PROCESSED_DIRS:
+        available = ", ".join(EVAL_SPLIT_PROCESSED_DIRS)
+        raise ValueError(f"Split de avaliacao invalido: {eval_split}. Opcoes: {available}")
+
+    return processed_data_dir / EVAL_SPLIT_PROCESSED_DIRS[eval_split] / dataset
+
+
+def read_optional_csv(path: Path) -> pd.DataFrame:
+    """Le um CSV se existir; caso contrario retorna um dataframe vazio."""
+
+    if not path.exists():
+        return pd.DataFrame()
+
+    return pd.read_csv(path)
+
+
+def read_optional_series(path: Path) -> pd.Series:
+    """Le uma serie CSV se existir e nao estiver vazia."""
+
+    if not path.exists():
+        return pd.Series(dtype=float, name="redshift")
+
+    try:
+        return pd.read_csv(path).squeeze("columns")
+    except EmptyDataError:
+        return pd.Series(dtype=float, name="redshift")
+
+
+def validate_test_set(test_set: str | None) -> str:
+    """Valida o conjunto externo usado na avaliacao final."""
+
+    if test_set not in TEST_SETS:
+        available = ", ".join(TEST_SETS)
+        raise ValueError(f"Test set invalido: {test_set}. Opcoes: {available}")
+
+    return test_set
+
+
 def load_processed_split(
     dataset_dir: Path,
+    test_set: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
     """Carrega os splits processados de um dataset."""
 
     X_train = pd.read_csv(dataset_dir / "X_train.csv")
-    X_val = pd.read_csv(dataset_dir / "X_val.csv")
-    X_test = pd.read_csv(dataset_dir / "X_test.csv")
+    X_val = read_optional_csv(dataset_dir / "X_val.csv")
+    if test_set is None:
+        X_test = read_optional_csv(dataset_dir / "X_test.csv")
+    else:
+        test_set = validate_test_set(test_set)
+        X_test = read_optional_csv(dataset_dir / f"X_test_{test_set}.csv")
     y_train = pd.read_csv(dataset_dir / "y_train.csv").squeeze("columns")
-    y_val = pd.read_csv(dataset_dir / "y_val.csv").squeeze("columns")
-    try:
-        y_test = pd.read_csv(dataset_dir / "y_test.csv").squeeze("columns")
-    except EmptyDataError:
-        y_test = pd.Series(dtype=float, name="redshift")
+    y_val = read_optional_series(dataset_dir / "y_val.csv")
+    if test_set is None:
+        y_test = read_optional_series(dataset_dir / "y_test.csv")
+    else:
+        y_test = read_optional_series(dataset_dir / f"y_test_{test_set}.csv")
 
     return X_train, X_val, X_test, y_train, y_val, y_test
 
@@ -297,14 +353,14 @@ def regression_metrics(
 
 
 def evaluate_predictions(
-    y_true_log: pd.Series,
-    y_pred_log: np.ndarray,
+    y_true: pd.Series,
+    y_pred: np.ndarray,
     split_name: str,
 ) -> dict[str, float | int]:
-    """Avalia sempre na escala original de redshift."""
+    """Avalia predicoes na escala original de redshift."""
 
-    y_true_redshift = np.expm1(y_true_log)
-    y_pred_redshift = np.expm1(y_pred_log)
+    y_true_redshift = np.asarray(y_true)
+    y_pred_redshift = np.asarray(y_pred)
     metrics = regression_metrics(y_true_redshift, y_pred_redshift, split_name)
 
     delta_z = (y_pred_redshift - y_true_redshift) / (1 + y_true_redshift)
@@ -335,10 +391,11 @@ def build_metadata(
     eval_split: str,
     feature_cols: list[str],
     model_params: dict[str, Any],
+    test_set: str | None = None,
 ) -> dict[str, Any]:
     """Monta metadados reprodutiveis do experimento."""
 
-    return {
+    metadata = {
         "experiment_name": experiment_name,
         "dataset": dataset,
         "model": model_label,
@@ -351,6 +408,25 @@ def build_metadata(
         "model_params": model_params,
         "created_at_utc": datetime.now(timezone.utc).strftime("%H:%M"),
     }
+    if test_set is not None:
+        metadata["test_set"] = validate_test_set(test_set)
+
+    return metadata
+
+
+def eval_artifact_suffix(eval_split: str, test_set: str | None = None) -> str:
+    """Retorna o sufixo de arquivo para validacao ou teste externo."""
+
+    if eval_split != "test":
+        return eval_split
+
+    if test_set is None:
+        available = ", ".join(TEST_SETS)
+        raise ValueError(
+            f"--test-set e obrigatorio quando --eval-split test. Opcoes: {available}"
+        )
+
+    return f"test_{validate_test_set(test_set)}"
 
 
 def save_json(data: dict[str, Any], path: Path) -> None:
@@ -391,6 +467,8 @@ def print_regression_summary(metrics: dict[str, Any]) -> None:
     print(f"Dataset: {metrics['dataset']}")
     print(f"Feature set: {metrics['feature_set']}")
     print(f"Eval split: {metrics['eval_split']} ({metrics['evaluation_purpose']})")
+    if metrics.get("test_set") is not None:
+        print(f"Test set: {metrics['test_set']}")
     print(f"Features: {', '.join(metrics['features'])}")
     print(f"{eval_split} MAE redshift: {metrics['metrics'][mae_key]:.6f}")
     print(f"{eval_split} RMSE redshift: {metrics['metrics'][rmse_key]:.6f}")

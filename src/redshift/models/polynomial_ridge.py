@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
@@ -20,8 +19,11 @@ if str(SRC_DIR) not in sys.path:
 from redshift.utils.modeling import (
     FEATURE_SETS,
     PROCESSED_DATA_DIR,
+    TEST_SET_CHOICES,
+    TEST_SETS,
     build_metadata,
     dataset_metrics_dir_name,
+    eval_artifact_suffix,
     evaluate_predictions,
     figure_output_path,
     get_eval_data,
@@ -32,6 +34,7 @@ from redshift.utils.modeling import (
     model_output_path,
     model_figures_dir,
     model_metrics_dir,
+    processed_dataset_dir,
     print_regression_summary,
     save_json,
     save_model_artifact,
@@ -74,47 +77,27 @@ def train_polynomial_ridge(
     return model
 
 
-def run_experiment(
+def evaluate_and_save_outputs(
+    model: Pipeline,
+    X_eval: pd.DataFrame,
+    y_eval: pd.Series,
+    feature_cols: list[str],
     dataset: str,
-    feature_set: str = "mag",
-    eval_split: str = "val",
-    degree: int = 2,
-    alpha: float = 1.0,
-    processed_data_dir: Path = PROCESSED_DATA_DIR,
-    models_dir: Path = MODELS_DIR,
-    figures_dir: Path = FIGURES_DIR,
-    metrics_dir: Path = METRICS_DIR,
+    feature_set: str,
+    eval_split: str,
+    degree: int,
+    alpha: float,
+    test_set: str | None,
+    dataset_dir: Path,
+    models_dir: Path,
+    figures_dir: Path,
+    metrics_dir: Path,
 ) -> dict[str, Any]:
-    """Executa o experimento Polynomial Ridge e salva artefatos.
+    """Avalia um split e salva modelo, metricas e grafico."""
 
-    Usa os splits ja pre-processados em data/processed/<dataset> (log1p nos erros
-    e no alvo, StandardScaler nas magnitudes), assim como a regressao linear.
-    """
-
-    dataset_dir = processed_data_dir / dataset
-    if not dataset_dir.exists():
-        raise FileNotFoundError(f"Pasta de dados processados nao encontrada: {dataset_dir}")
-
-    X_train, X_val, X_test, y_train, y_val, y_test = load_processed_split(dataset_dir)
-    feature_cols = get_feature_cols(feature_set)
-    X_eval, y_eval = get_eval_data(eval_split, X_val, y_val, X_test, y_test)
     validate_feature_columns(X_eval, feature_cols)
-
-    X_fit = X_train
-    y_fit = y_train
-    if eval_split == "test":
-        X_fit = pd.concat([X_train, X_val], axis=0, ignore_index=True)
-        y_fit = pd.concat([y_train, y_val], axis=0, ignore_index=True)
-
-    model = train_polynomial_ridge(
-        X_train=X_fit,
-        y_train=y_fit,
-        feature_cols=feature_cols,
-        degree=degree,
-        alpha=alpha,
-    )
     eval_pred = model.predict(X_eval.loc[:, feature_cols])
-
+    artifact_suffix = eval_artifact_suffix(eval_split, test_set)
     experiment_name = f"{MODEL_NAME}_{feature_set}_degree{degree}_alpha{alpha:g}"
     metadata = build_metadata(
         experiment_name=experiment_name,
@@ -132,6 +115,7 @@ def run_experiment(
                 "StandardScaler",
             ],
         },
+        test_set=test_set,
     )
     metrics: dict[str, Any] = {
         **metadata,
@@ -140,8 +124,8 @@ def run_experiment(
     if eval_split == "test":
         metrics["slice_metrics"] = build_slice_metrics(
             X_eval_processed=X_eval,
-            y_true_log=y_eval,
-            y_pred_log=eval_pred,
+            y_true=y_eval,
+            y_pred=eval_pred,
             split_name=eval_split,
             dataset_dir=dataset_dir,
         )
@@ -156,7 +140,7 @@ def run_experiment(
             feature_set=feature_set,
             model_name=MODEL_NAME,
             dataset=dataset,
-            filename=f"{experiment_name}_{eval_split}.joblib",
+            filename=f"{experiment_name}_{artifact_suffix}.joblib",
         ),
     )
     save_json(
@@ -169,25 +153,118 @@ def run_experiment(
             dataset=dataset,
             filename=(
                 f"{MODEL_NAME}_{dataset_metrics_dir_name(dataset)}_"
-                f"{feature_set}_degree{degree}_alpha{alpha:g}_{eval_split}_metrics.json"
+                f"{feature_set}_degree{degree}_alpha{alpha:g}_{artifact_suffix}_metrics.json"
             ),
         ),
     )
     save_redshift_residual_plot(
-        y_true=np.expm1(y_eval),
-        y_pred=np.expm1(eval_pred),
+        y_true=y_eval,
+        y_pred=eval_pred,
         path=figure_output_path(
             figures_dir=figures_dir,
             eval_split=eval_split,
             feature_set=feature_set,
             model_name=MODEL_NAME,
             dataset=dataset,
-            filename=f"{experiment_name}_{eval_split}_residuals.png",
+            filename=f"{experiment_name}_{artifact_suffix}_residuals.png",
         ),
-        title=f"{MODEL_LABEL} | {dataset} | {feature_set} | {eval_split}",
+        title=f"{MODEL_LABEL} | {dataset} | {feature_set} | {artifact_suffix}",
     )
 
     return metrics
+
+
+def run_experiment(
+    dataset: str,
+    feature_set: str = "mag",
+    eval_split: str = "val",
+    degree: int = 2,
+    alpha: float = 1.0,
+    test_set: str | None = None,
+    processed_data_dir: Path = PROCESSED_DATA_DIR,
+    models_dir: Path = MODELS_DIR,
+    figures_dir: Path = FIGURES_DIR,
+    metrics_dir: Path = METRICS_DIR,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    """Executa o experimento Polynomial Ridge e salva artefatos.
+
+    Usa os splits ja pre-processados em data/processed/Val ou data/processed/Test
+    (log1p nos erros, StandardScaler nas magnitudes e alvo em escala original),
+    assim como a regressao linear.
+    """
+
+    dataset_dir = processed_dataset_dir(processed_data_dir, eval_split, dataset)
+    if not dataset_dir.exists():
+        raise FileNotFoundError(f"Pasta de dados processados nao encontrada: {dataset_dir}")
+
+    feature_cols = get_feature_cols(feature_set)
+    if eval_split == "test" and test_set == "all":
+        X_train = pd.read_csv(dataset_dir / "X_train.csv")
+        y_train = pd.read_csv(dataset_dir / "y_train.csv").squeeze("columns")
+        model = train_polynomial_ridge(
+            X_train=X_train,
+            y_train=y_train,
+            feature_cols=feature_cols,
+            degree=degree,
+            alpha=alpha,
+        )
+
+        results: list[dict[str, Any]] = []
+        for split_name in TEST_SETS:
+            X_eval = pd.read_csv(dataset_dir / f"X_test_{split_name}.csv")
+            y_eval = pd.read_csv(dataset_dir / f"y_test_{split_name}.csv").squeeze(
+                "columns"
+            )
+            results.append(
+                evaluate_and_save_outputs(
+                    model=model,
+                    X_eval=X_eval,
+                    y_eval=y_eval,
+                    feature_cols=feature_cols,
+                    dataset=dataset,
+                    feature_set=feature_set,
+                    eval_split=eval_split,
+                    degree=degree,
+                    alpha=alpha,
+                    test_set=split_name,
+                    dataset_dir=dataset_dir,
+                    models_dir=models_dir,
+                    figures_dir=figures_dir,
+                    metrics_dir=metrics_dir,
+                )
+            )
+        return results
+
+    test_set_to_load = test_set if eval_split == "test" else None
+    X_train, X_val, X_test, y_train, y_val, y_test = load_processed_split(
+        dataset_dir,
+        test_set=test_set_to_load,
+    )
+    X_eval, y_eval = get_eval_data(eval_split, X_val, y_val, X_test, y_test)
+
+    model = train_polynomial_ridge(
+        X_train=X_train,
+        y_train=y_train,
+        feature_cols=feature_cols,
+        degree=degree,
+        alpha=alpha,
+    )
+    return evaluate_and_save_outputs(
+        model=model,
+        X_eval=X_eval,
+        y_eval=y_eval,
+        feature_cols=feature_cols,
+        dataset=dataset,
+        feature_set=feature_set,
+        eval_split=eval_split,
+        degree=degree,
+        alpha=alpha,
+        test_set=test_set_to_load,
+        dataset_dir=dataset_dir,
+        models_dir=models_dir,
+        figures_dir=figures_dir,
+        metrics_dir=metrics_dir,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -200,7 +277,7 @@ def parse_args() -> argparse.Namespace:
         "--dataset",
         choices=["happyT", "teddyT"],
         default="happyT",
-        help="Dataset bruto em data/raw.",
+        help="Dataset processado em data/processed/Val ou data/processed/Test.",
     )
     parser.add_argument(
         "--feature-set",
@@ -213,6 +290,12 @@ def parse_args() -> argparse.Namespace:
         choices=["val", "test"],
         default="val",
         help="Split usado para avaliacao: val para selecao de modelo; test para avaliacao final.",
+    )
+    parser.add_argument(
+        "--test-set",
+        choices=TEST_SET_CHOICES,
+        default=None,
+        help="Conjunto externo usado quando --eval-split test: B, C, D ou all.",
     )
     parser.add_argument(
         "--degree",
@@ -230,7 +313,7 @@ def parse_args() -> argparse.Namespace:
         "--processed-data-dir",
         type=Path,
         default=PROCESSED_DATA_DIR,
-        help="Diretorio base com datasets processados.",
+        help="Diretorio base com subpastas Val e Test.",
     )
     parser.add_argument(
         "--models-dir",
@@ -258,18 +341,23 @@ def main() -> None:
     """Executa o modelo pelo terminal."""
 
     args = parse_args()
-    metrics = run_experiment(
+    metrics_result = run_experiment(
         dataset=args.dataset,
         feature_set=args.feature_set,
         eval_split=args.eval_split,
         degree=args.degree,
         alpha=args.alpha,
+        test_set=args.test_set,
         processed_data_dir=args.processed_data_dir,
         models_dir=args.models_dir,
         figures_dir=args.figures_dir,
         metrics_dir=args.metrics_dir,
     )
-    print_regression_summary(metrics)
+    if isinstance(metrics_result, list):
+        for metrics in metrics_result:
+            print_regression_summary(metrics)
+    else:
+        print_regression_summary(metrics_result)
 
 
 if __name__ == "__main__":

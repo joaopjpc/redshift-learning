@@ -34,11 +34,12 @@ Fluxo de trabalho:
 
 1. Pre-processar os dados (`data/preprocess.py`).
 2. Selecionar hiperparametros na **validacao** (so o Polynomial Ridge tem busca).
-3. Avaliar **uma unica vez** no teste externo (`B + C + D`).
+3. Avaliar no teste externo, separadamente em `B`, `C` e `D`.
 
-`utils/modeling.py` concentra o codigo comum: leitura de `data/processed/`, selecao
-de features e split de avaliacao, metricas na escala original do redshift, e os
-caminhos padronizados de modelos, metricas, figuras e tabelas.
+`utils/modeling.py` concentra o codigo comum: leitura de `data/processed/Val/` ou
+`data/processed/Test/`, selecao de features e split de avaliacao, metricas na escala
+original do redshift, e os caminhos padronizados de modelos, metricas, figuras e
+tabelas.
 
 `evaluation/plots.py` salva o grafico de avaliacao (real vs previsto e residuos).
 A geracao da figura e **nao-fatal**: se o backend do matplotlib estiver bloqueado
@@ -47,32 +48,59 @@ modelos e tabelas.
 
 ## Pre-processamento (`data/preprocess.py`)
 
-**Os dois modelos consomem os splits ja preprocessados em
-`data/processed/<dataset>/`.** O pre-processamento e ajustado **apenas no treino**
-(sem vazamento) e depois aplicado a validacao e teste:
+**Os dois modelos consomem os splits ja preprocessados em subpastas por modo:**
+
+```text
+data/processed/Val/<dataset>/   -> model selection
+data/processed/Test/<dataset>/  -> avaliacao final
+```
 
 | Grupo de colunas      | Transformacao                  |
 | --------------------- | ------------------------------ |
 | magnitudes `u,g,r,i,z`| `StandardScaler`               |
 | erros `uErr..zErr`    | `log1p` e depois `RobustScaler`|
-| alvo `redshift`       | `log1p` (sem scaler)           |
+| alvo `redshift`       | escala original (sem scaler)   |
 
-- O `log1p` nos **erros** reduz a assimetria das medidas; o `log1p` no **alvo**
-  lineariza a escala de redshift.
-- Ponto importante: o `log1p` e aplicado nas **features brutas** (erros), **antes**
-  de qualquer expansao polinomial. As metricas voltam para a escala original de
-  redshift aplicando `expm1` nas predicoes e no alvo.
+- O `log1p` nos **erros** reduz a assimetria das medidas.
+- O **alvo** permanece diretamente na escala original de redshift; nao ha `log1p`
+  no alvo e nao ha `expm1` nas predicoes.
+- O `log1p` e aplicado nas **features brutas** de erro, **antes** de qualquer
+  expansao polinomial. As metricas sao calculadas diretamente na escala original.
 
 Split dos dados:
 
 - conjunto `A` -> `train`/`validation` (80%/20%, estratificado por faixa de redshift);
-- conjuntos `B`, `C`, `D` -> teste externo (concatenados).
+- conjuntos `B`, `C`, `D` -> testes externos separados.
 
 Gerar os dados processados (uma vez por dataset):
 
 ```powershell
 .\.venv\Scripts\python.exe src\redshift\data\preprocess.py --dataset happyT
 .\.venv\Scripts\python.exe src\redshift\data\preprocess.py --dataset teddyT
+```
+
+Por padrao, cada comando gera os dois modos:
+
+```text
+Val:
+  fit dos scalers em: train
+  salva: X_train, y_train, X_val, y_val, preprocessors.joblib
+
+Test:
+  fit dos scalers em: train + validation
+  salva: X_train, y_train, X_test_B/C/D, y_test_B/C/D, preprocessors.joblib
+```
+
+No modo `Test`, o arquivo `X_train.csv` representa `train + validation` ja
+preprocessado com scalers ajustados nesse conjunto combinado. Os arquivos
+`X_test_B.csv`, `X_test_C.csv` e `X_test_D.csv` mantem os tres testes externos
+separados para avaliacao individual.
+
+Gerar apenas um modo, se necessario:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\data\preprocess.py --dataset happyT --mode val
+.\.venv\Scripts\python.exe src\redshift\data\preprocess.py --dataset happyT --mode test
 ```
 
 ## Feature sets
@@ -94,6 +122,8 @@ u, g, r, i, z, uErr, gErr, rErr, iErr, zErr
 `--eval-split val` deve ser usado para model selection.
 
 ```text
+dados lidos de: data/processed/Val/<dataset>/
+fit dos scalers em: train
 treina em: train
 avalia em: validation
 ```
@@ -101,23 +131,27 @@ avalia em: validation
 `--eval-split test` deve ser usado apenas para avaliacao final.
 
 ```text
+dados lidos de: data/processed/Test/<dataset>/
+fit dos scalers em: train + validation
 treina em: train + validation
-avalia em: test externo (B + C + D)
+avalia em: um teste externo por vez (B, C ou D)
 ```
 
 Em outras palavras:
 
 - `val`: o modelo e ajustado apenas em `X_train` e comparado em `X_val`;
-- `test`: depois da selecao do modelo, o ajuste final usa `X_train + X_val` e a
-  avaliacao acontece em `X_test`.
+- `test`: depois da selecao do modelo, o ajuste final usa o `X_train` salvo em
+  `data/processed/Test/<dataset>/`, que ja representa `train + validation`, e a
+  avaliacao acontece em `X_test_B`, `X_test_C` ou `X_test_D`, escolhido com
+  `--test-set`. Tambem e possivel usar `--test-set all` para treinar uma vez e
+  avaliar os tres testes externos na mesma execucao.
 
 Se o split escolhido estiver vazio ou incompleto, a execucao falha com erro explicito.
 
 ## Metricas
 
-As metricas sao calculadas sempre na **escala original do redshift**, aplicando
-`expm1` nas predicoes e no alvo antes da avaliacao. Sao iguais para os dois modelos,
-pois ambos usam a mesma funcao `evaluate_predictions`.
+As metricas sao calculadas sempre na **escala original do redshift**. Sao iguais
+para os dois modelos, pois ambos usam a mesma funcao `evaluate_predictions`.
 
 ```text
 mae
@@ -185,12 +219,13 @@ src/redshift/models/linear_regression.py
 Pipeline:
 
 ```text
-data/processed -> LinearRegression
+data/processed/Val/<dataset> ou data/processed/Test/<dataset> -> LinearRegression
 ```
 
-Le diretamente os arquivos de `data/processed/<dataset>/` (magnitudes com
-`StandardScaler`, erros com `log1p` + `RobustScaler`, alvo com `log1p`) e ajusta uma
-`LinearRegression`. Nao ha hiperparametro a buscar.
+Le diretamente os arquivos do modo correspondente ao `--eval-split`: `Val` para
+validacao e `Test` para avaliacao final. As magnitudes ja chegam com
+`StandardScaler`, os erros com `log1p` + `RobustScaler`, e o alvo em escala
+original. Nao ha hiperparametro a buscar.
 
 Rodar MAG em validacao:
 
@@ -207,7 +242,13 @@ Rodar MAG+ERR em validacao:
 Rodar avaliacao final em teste:
 
 ```powershell
-.\.venv\Scripts\python.exe src\redshift\models\linear_regression.py --dataset happyT --feature-set mag --eval-split test
+.\.venv\Scripts\python.exe src\redshift\models\linear_regression.py --dataset happyT --feature-set mag --eval-split test --test-set B
+```
+
+Rodar os tres testes externos com um unico treino:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\models\linear_regression.py --dataset happyT --feature-set mag --eval-split test --test-set all
 ```
 
 Saidas por execucao: modelo `.joblib`, metricas `.json` e grafico `.png`.
@@ -220,11 +261,13 @@ Script:
 src/redshift/models/polynomial_ridge.py
 ```
 
-Assim como a regressao linear, o Polynomial Ridge **consome `data/processed/<dataset>/`**
-(nao usa mais dados brutos nem aplica `log1p` depois da expansao). O pipeline do modelo e:
+Assim como a regressao linear, o Polynomial Ridge consome a pasta processada do
+modo correspondente ao `--eval-split` (nao usa mais dados brutos nem aplica
+`log1p` ao alvo ou depois da expansao). O pipeline do modelo e:
 
 ```text
-data/processed -> PolynomialFeatures -> StandardScaler -> Ridge
+data/processed/Val/<dataset> ou data/processed/Test/<dataset>
+  -> PolynomialFeatures -> StandardScaler -> Ridge
 ```
 
 ```python
@@ -248,7 +291,7 @@ propositos diferentes:
 
 As duas passagens nao conflitam: re-padronizar os termos lineares (ja escalados na
 etapa 1) e praticamente um no-op; o ganho real da etapa 2 e sobre os quadrados e
-produtos. O alvo continua transformado com `log1p(redshift)` no pre-processamento.
+produtos. O alvo permanece em escala original no pre-processamento.
 
 Rodar uma configuracao especifica (MAG):
 
@@ -265,7 +308,13 @@ Com MAG+ERR:
 Avaliacao final em teste, ja com o `degree` e o `alpha` escolhidos na validacao:
 
 ```powershell
-.\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag --eval-split test --degree 2 --alpha 5
+.\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag --eval-split test --test-set B --degree 2 --alpha 5
+```
+
+Rodar os tres testes externos com um unico treino:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag --eval-split test --test-set all --degree 2 --alpha 5
 ```
 
 ## Busca de hiperparametros do Polynomial Ridge
@@ -335,6 +384,26 @@ limite 1-SE               = 0.018033 + 0.000198 = 0.018231
 tem o mesmo degree, o desempate vai pelo maior `alpha`: a escolhida e **degree 2, alpha 5**
 — 50x mais regularizada que o minimo cru, com NMAD praticamente identico.
 
+### Exemplo concreto (happy / mag_err)
+
+Outro caso comum e quando varios `alpha` empatam praticamente no mesmo `degree`:
+
+```text
+degree  alpha     nmad     rmse      mae  within_1se  selected_1se
+     2   10.0 0.032525 0.065706 0.042136        True          True
+     2    1.0 0.032389 0.065556 0.041971        True         False
+     2    0.5 0.032390 0.065548 0.041962        True         False
+     2    0.1 0.032394 0.065541 0.041954        True         False
+     2    2.0 0.032427 0.065573 0.041990        True         False
+     2    5.0 0.032437 0.065623 0.042046        True         False
+```
+
+O menor NMAD bruto e `degree 2, alpha 1.0`, com `nmad = 0.032389`. Mesmo assim,
+a regra de 1-SE escolhe `degree 2, alpha 10.0`, porque ele tambem esta dentro da
+margem de erro (`within_1se = True`) e e o mais regularizado entre os empatados.
+A diferenca de NMAD e pequena (`0.000136`), entao a escolha troca um ganho
+minimo de validacao por um modelo mais conservador.
+
 ### Por que NMAD e nao RMSE
 
 O RMSE e dominado por poucos outliers catastroficos e tende a apontar sempre o maior
@@ -373,12 +442,11 @@ Para rodar qualquer comando no Teddy, troque `--dataset happyT` por `--dataset t
 
 ## Aviso sobre limitacao conhecida
 
-No teste externo (`B + C + D`), modelos polinomiais podem produzir predicoes
+Nos testes externos (`B`, `C` e `D`), modelos polinomiais podem produzir predicoes
 extremas para objetos que caem fora do suporte do treino (extrapolacao sob mudanca de
-distribuicao). Como o alvo usa `log1p`, uma predicao moderadamente alta no espaco
-transformado vira um redshift enorme apos `expm1`, inflando RMSE/MAE enquanto o NMAD
-permanece comportado. Esse efeito nao e corrigido pela selecao de hiperparametros; um
-guarda-corpo possivel e clipar a predicao em uma faixa fisica de redshift antes do
-`expm1`.
+distribuicao). Mesmo com o alvo em escala original, extrapolacoes ainda podem inflar
+RMSE/MAE enquanto o NMAD permanece comportado. Esse efeito nao e corrigido pela
+selecao de hiperparametros; um guarda-corpo possivel e limitar predicoes a uma faixa
+fisica de redshift antes da avaliacao.
 ```
 

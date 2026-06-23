@@ -5,7 +5,7 @@
   "feature_set": "mag",
   "eval_split": "val",
   "evaluation_purpose": "model_selection",
-  "target": "log1p(redshift)",
+  "target": "redshift",
   "features": [
     "u",
     "g",
@@ -23,17 +23,17 @@
       "StandardScaler"
     ]
   },
-  "created_at_utc": "03:23",
+  "created_at_utc": "16:37",
   "metrics": {
-    "val_mae": 0.04835578504584297,
-    "val_rmse": 0.0712144719648228,
-    "val_r2": 0.8845084702735542,
-    "val_bias": -0.0025916913537276202,
+    "val_mae": 0.048197617051284065,
+    "val_rmse": 0.07114456193735053,
+    "val_r2": 0.8847351110877514,
+    "val_bias": -0.00014505696693508535,
     "val_n": 14990,
-    "val_negative_redshift_predictions": 144,
-    "val_catastrophic_outlier_fraction": 0.016611074049366244,
+    "val_negative_redshift_predictions": 179,
+    "val_catastrophic_outlier_fraction": 0.016811207471647764,
     "val_catastrophic_outlier_threshold": 0.15,
-    "val_nmad": 0.03857156619650008,
-    "val_nmad_se": 0.0003788986901774904
+    "val_nmad": 0.03856589342109754,
+    "val_nmad_se": 0.000386279151182894
   }
 }

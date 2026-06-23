@@ -171,7 +171,7 @@ def parse_args() -> argparse.Namespace:
         "--dataset",
         choices=["happyT", "teddyT"],
         default="happyT",
-        help="Dataset processado em data/processed.",
+        help="Dataset processado em data/processed/Val.",
     )
     parser.add_argument(
         "--feature-set",
@@ -203,7 +203,7 @@ def parse_args() -> argparse.Namespace:
         "--processed-data-dir",
         type=Path,
         default=PROCESSED_DATA_DIR,
-        help="Diretorio base com datasets processados.",
+        help="Diretorio base com subpastas Val e Test.",
     )
     parser.add_argument(
         "--models-dir",

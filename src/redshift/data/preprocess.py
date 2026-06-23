@@ -16,6 +16,8 @@ from sklearn.preprocessing import RobustScaler, StandardScaler
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+VAL_MODE_DIR = "Val"
+TEST_MODE_DIR = "Test"
 
 MAGNITUDE_COLUMNS: tuple[str, ...] = ("u", "g", "r", "i", "z")
 MAGNITUDE_ERROR_COLUMNS: tuple[str, ...] = ("uErr", "gErr", "rErr", "iErr", "zErr")
@@ -199,7 +201,7 @@ def fit_preprocess_train(
         )
     )
 
-    # 4. Transformar o alvo com log1p. O alvo nao recebe scaler.
+    # 4. Manter o alvo na escala original de redshift.
     y_train_processed = transform_target(y_train)
 
     preprocessors = {
@@ -248,27 +250,23 @@ def transform_features(
 
 
 def transform_target(y: pd.Series | np.ndarray) -> pd.Series | np.ndarray:
-    """Aplica log1p no alvo redshift."""
+    """Mantem o alvo redshift na escala original."""
 
     if isinstance(y, pd.Series):
-        return pd.Series(np.log1p(y), index=y.index, name=y.name)
+        return y.copy()
 
-    return np.log1p(y)
+    return np.asarray(y).copy()
 
 
 def inverse_transform_target(
     y_transformed: pd.Series | np.ndarray,
 ) -> pd.Series | np.ndarray:
-    """Volta o redshift transformado para a escala original."""
+    """Retorna o redshift, que ja esta na escala original."""
 
     if isinstance(y_transformed, pd.Series):
-        return pd.Series(
-            np.expm1(y_transformed),
-            index=y_transformed.index,
-            name=y_transformed.name,
-        )
+        return y_transformed.copy()
 
-    return np.expm1(y_transformed)
+    return np.asarray(y_transformed).copy()
 
 
 def transform_new_data(
@@ -310,7 +308,7 @@ def preprocess_train_val_test(
     X_val_processed = transform_features(X_val, preprocessors)
     X_test_processed = transform_features(X_test, preprocessors)
 
-    # 4. Transformar os alvos com log1p, sem ajuste estatistico.
+    # 4. Manter os alvos na escala original, sem ajuste estatistico.
     y_val_processed = transform_target(y_val)
     y_test_processed = transform_target(y_test)
 
@@ -334,15 +332,15 @@ def preprocess_dataset_a_b_c_d(
 ) -> tuple[
     pd.DataFrame,
     pd.DataFrame,
-    pd.DataFrame,
+    dict[str, pd.DataFrame],
     pd.Series,
     pd.Series,
-    pd.Series,
+    dict[str, pd.Series],
     dict[str, object],
 ]:
-    """Pre-processa um dataset usando A para treino/validacao e B+C+D para teste.
+    """Pre-processa A para treino/validacao e B, C, D como testes separados.
 
-    Retorna X_train, X_val, X_test, y_train, y_val, y_test e preprocessors.
+    Retorna X_train, X_val, X_tests, y_train, y_val, y_tests e preprocessors.
     """
 
     # 1. Carregar A e os conjuntos externos B, C e D.
@@ -373,21 +371,122 @@ def preprocess_dataset_a_b_c_d(
     X_val_processed = transform_features(X_val, preprocessors)
     y_val_processed = transform_target(y_val)
 
-    # 6. Juntar B, C e D em um unico teste externo.
-    test_df = pd.concat(test_dfs.values(), axis=0, ignore_index=True)
-
-    # 7. Transformar o teste externo com os scalers ajustados no treino.
-    X_test, y_test = split_features_target(test_df)
-    X_test_processed = transform_features(X_test, preprocessors)
-    y_test_processed = transform_target(y_test)
+    # 6. Transformar cada teste externo com os scalers ajustados no treino.
+    X_test_processed_by_split: dict[str, pd.DataFrame] = {}
+    y_test_processed_by_split: dict[str, pd.Series] = {}
+    for split_name, test_df in test_dfs.items():
+        X_test, y_test = split_features_target(test_df)
+        X_test_processed_by_split[split_name] = transform_features(
+            X_test,
+            preprocessors,
+        )
+        y_test_processed_by_split[split_name] = transform_target(y_test)
 
     return (
         X_train_processed,
         X_val_processed,
-        X_test_processed,
+        X_test_processed_by_split,
         y_train_processed,
         y_val_processed,
-        y_test_processed,
+        y_test_processed_by_split,
+        preprocessors,
+    )
+
+
+def preprocess_dataset_for_val_mode(
+    dataset_name: str,
+    raw_dir: str | Path = RAW_DATA_DIR,
+    validation_size: float = 0.20,
+    random_state: int = 42,
+    stratify_by_redshift: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, dict[str, object]]:
+    """Pre-processa dados para model selection.
+
+    O scaler e ajustado apenas no split de treino derivado do conjunto A. O split
+    de validacao e apenas transformado. O teste externo nao e salvo neste modo.
+    """
+
+    a_df, _ = load_raw_datasets(
+        dataset_name=dataset_name,
+        raw_dir=raw_dir,
+    )
+    train_df, val_df = split_train_validation_from_a(
+        a_df,
+        validation_size=validation_size,
+        random_state=random_state,
+        stratify_by_redshift=stratify_by_redshift,
+    )
+
+    X_train, y_train = split_features_target(train_df)
+    X_val, y_val = split_features_target(val_df)
+    X_train_processed, y_train_processed, preprocessors = fit_preprocess_train(
+        X_train,
+        y_train,
+    )
+    X_val_processed = transform_features(X_val, preprocessors)
+    y_val_processed = transform_target(y_val)
+
+    return (
+        X_train_processed,
+        X_val_processed,
+        y_train_processed,
+        y_val_processed,
+        preprocessors,
+    )
+
+
+def preprocess_dataset_for_test_mode(
+    dataset_name: str,
+    raw_dir: str | Path = RAW_DATA_DIR,
+    validation_size: float = 0.20,
+    random_state: int = 42,
+    stratify_by_redshift: bool = True,
+) -> tuple[
+    pd.DataFrame,
+    dict[str, pd.DataFrame],
+    pd.Series,
+    dict[str, pd.Series],
+    dict[str, object],
+]:
+    """Pre-processa dados para avaliacao final.
+
+    O conjunto A e dividido do mesmo jeito do modo Val, depois treino e validacao
+    sao unidos. O scaler e ajustado em train+val e aplicado separadamente aos
+    testes externos B, C e D.
+    """
+
+    a_df, test_dfs = load_raw_datasets(
+        dataset_name=dataset_name,
+        raw_dir=raw_dir,
+    )
+    train_df, val_df = split_train_validation_from_a(
+        a_df,
+        validation_size=validation_size,
+        random_state=random_state,
+        stratify_by_redshift=stratify_by_redshift,
+    )
+    train_val_df = pd.concat([train_df, val_df], axis=0, ignore_index=True)
+
+    X_train, y_train = split_features_target(train_val_df)
+    X_train_processed, y_train_processed, preprocessors = fit_preprocess_train(
+        X_train,
+        y_train,
+    )
+    X_test_processed_by_split: dict[str, pd.DataFrame] = {}
+    y_test_processed_by_split: dict[str, pd.Series] = {}
+    for split_name, test_df in test_dfs.items():
+        X_test, y_test = split_features_target(test_df)
+        X_test_processed_by_split[split_name] = transform_features(
+            X_test,
+            preprocessors,
+        )
+        y_test_processed_by_split[split_name] = transform_target(y_test)
+
+    return (
+        X_train_processed,
+        X_test_processed_by_split,
+        y_train_processed,
+        y_test_processed_by_split,
         preprocessors,
     )
 
@@ -400,10 +499,10 @@ def preprocess_happy_a_b_c_d(
 ) -> tuple[
     pd.DataFrame,
     pd.DataFrame,
-    pd.DataFrame,
+    dict[str, pd.DataFrame],
     pd.Series,
     pd.Series,
-    pd.Series,
+    dict[str, pd.Series],
     dict[str, object],
 ]:
     """Atalho para pre-processar o dataset happyT."""
@@ -433,11 +532,13 @@ def save_processed_splits(
     output_dir: str | Path,
     dataset_name: str,
     X_train: pd.DataFrame,
-    X_val: pd.DataFrame,
-    X_test: pd.DataFrame,
+    X_val: pd.DataFrame | None,
+    X_test: pd.DataFrame | None,
+    X_tests: dict[str, pd.DataFrame] | None,
     y_train: pd.Series,
-    y_val: pd.Series,
-    y_test: pd.Series,
+    y_val: pd.Series | None,
+    y_test: pd.Series | None,
+    y_tests: dict[str, pd.Series] | None,
     preprocessors: dict[str, object],
 ) -> None:
     """Salva as bases processadas em CSV e os scalers em joblib."""
@@ -467,11 +568,19 @@ def save_processed_splits(
             path.unlink()
 
     X_train.to_csv(output_dir / "X_train.csv", index=False)
-    X_val.to_csv(output_dir / "X_val.csv", index=False)
-    X_test.to_csv(output_dir / "X_test.csv", index=False)
     y_train.to_csv(output_dir / "y_train.csv", index=False)
-    y_val.to_csv(output_dir / "y_val.csv", index=False)
-    y_test.to_csv(output_dir / "y_test.csv", index=False)
+    if X_val is not None and y_val is not None:
+        X_val.to_csv(output_dir / "X_val.csv", index=False)
+        y_val.to_csv(output_dir / "y_val.csv", index=False)
+    if X_test is not None and y_test is not None:
+        X_test.to_csv(output_dir / "X_test.csv", index=False)
+        y_test.to_csv(output_dir / "y_test.csv", index=False)
+    if X_tests is not None and y_tests is not None:
+        for split_name in TEST_SETS:
+            if split_name not in X_tests or split_name not in y_tests:
+                raise ValueError(f"Teste externo ausente no split {split_name}")
+            X_tests[split_name].to_csv(output_dir / f"X_test_{split_name}.csv", index=False)
+            y_tests[split_name].to_csv(output_dir / f"y_test_{split_name}.csv", index=False)
 
     save_preprocessors(preprocessors, output_dir / "preprocessors.joblib")
 
@@ -496,7 +605,13 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         default=PROCESSED_DATA_DIR,
-        help="Pasta onde os arquivos processados serao salvos.",
+        help="Pasta base onde Val/<dataset> e Test/<dataset> serao salvos.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["all", "val", "test"],
+        default="all",
+        help="Modo de pre-processamento: val, test ou all.",
     )
     parser.add_argument(
         "--validation-size",
@@ -518,40 +633,79 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    (
-        X_train,
-        X_val,
-        X_test,
-        y_train,
-        y_val,
-        y_test,
-        preprocessors,
-    ) = preprocess_dataset_a_b_c_d(
-        dataset_name=args.dataset,
-        raw_dir=args.raw_dir,
-        validation_size=args.validation_size,
-        random_state=args.random_state,
-        stratify_by_redshift=not args.no_stratify,
-    )
+    saved_dirs: list[Path] = []
+    if args.mode in {"all", "val"}:
+        (
+            X_train,
+            X_val,
+            y_train,
+            y_val,
+            preprocessors,
+        ) = preprocess_dataset_for_val_mode(
+            dataset_name=args.dataset,
+            raw_dir=args.raw_dir,
+            validation_size=args.validation_size,
+            random_state=args.random_state,
+            stratify_by_redshift=not args.no_stratify,
+        )
+        save_processed_splits(
+            output_dir=Path(args.output_dir) / VAL_MODE_DIR,
+            dataset_name=args.dataset,
+            X_train=X_train,
+            X_val=X_val,
+            X_test=None,
+            X_tests=None,
+            y_train=y_train,
+            y_val=y_val,
+            y_test=None,
+            y_tests=None,
+            preprocessors=preprocessors,
+        )
+        saved_dirs.append(Path(args.output_dir) / VAL_MODE_DIR / args.dataset)
 
-    save_processed_splits(
-        output_dir=args.output_dir,
-        dataset_name=args.dataset,
-        X_train=X_train,
-        X_val=X_val,
-        X_test=X_test,
-        y_train=y_train,
-        y_val=y_val,
-        y_test=y_test,
-        preprocessors=preprocessors,
-    )
+        print(f"Modo Val: scaler ajustado em train; avaliacao em val")
+        print(f"  X_train: {X_train.shape}")
+        print(f"  X_val: {X_val.shape}")
+
+    if args.mode in {"all", "test"}:
+        (
+            X_train,
+            X_tests,
+            y_train,
+            y_tests,
+            preprocessors,
+        ) = preprocess_dataset_for_test_mode(
+            dataset_name=args.dataset,
+            raw_dir=args.raw_dir,
+            validation_size=args.validation_size,
+            random_state=args.random_state,
+            stratify_by_redshift=not args.no_stratify,
+        )
+        save_processed_splits(
+            output_dir=Path(args.output_dir) / TEST_MODE_DIR,
+            dataset_name=args.dataset,
+            X_train=X_train,
+            X_val=None,
+            X_test=None,
+            X_tests=X_tests,
+            y_train=y_train,
+            y_val=None,
+            y_test=None,
+            y_tests=y_tests,
+            preprocessors=preprocessors,
+        )
+        saved_dirs.append(Path(args.output_dir) / TEST_MODE_DIR / args.dataset)
+
+        print(f"Modo Test: scaler ajustado em train+val; avaliacao em test")
+        print(f"  X_train: {X_train.shape}")
+        for split_name in TEST_SETS:
+            print(f"  X_test_{split_name}: {X_tests[split_name].shape}")
 
     print(f"Dataset: {args.dataset}")
     print(f"Validacao: {args.validation_size:.0%} do conjunto A")
-    print(f"X_train: {X_train.shape}")
-    print(f"X_val: {X_val.shape}")
-    print(f"X_test: {X_test.shape}")
-    print(f"Arquivos salvos em: {Path(args.output_dir) / args.dataset}")
+    print("Arquivos salvos em:")
+    for saved_dir in saved_dirs:
+        print(f"  {saved_dir}")
 
 
 if __name__ == "__main__":

@@ -23,8 +23,8 @@ MAGNITUDE_SLICE_COLUMN = "r"
 
 def build_slice_metrics(
     X_eval_processed: pd.DataFrame,
-    y_true_log: pd.Series,
-    y_pred_log: np.ndarray,
+    y_true: pd.Series,
+    y_pred: np.ndarray,
     split_name: str,
     dataset_dir: Path,
 ) -> dict[str, list[dict[str, Any]]]:
@@ -36,8 +36,8 @@ def build_slice_metrics(
     """
 
     X_eval_original = restore_original_features(X_eval_processed, dataset_dir)
-    y_true_redshift = np.expm1(y_true_log)
-    y_pred_redshift = np.expm1(y_pred_log)
+    y_true_redshift = np.asarray(y_true)
+    y_pred_redshift = np.asarray(y_pred)
     photometric_error = X_eval_original.loc[:, ERR_FEATURES].mean(axis=1)
 
     return {
