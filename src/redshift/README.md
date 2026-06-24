@@ -9,6 +9,8 @@ modelos para estimacao de redshift fotometrico.
 src/redshift/
   data/
     preprocess.py
+    preprocess_gate_err.py
+    gate_err.py
   evaluation/
     plots.py
   models/
@@ -16,30 +18,33 @@ src/redshift/
     polynomial_ridge.py
   training/
     search_polynomial_ridge.py
+    search_gate_strength_linear_regression.py
   utils/
     modeling.py
 ```
 
 ## Visao geral
 
-Dois baselines de regressao sao comparados nos dois datasets COIN:
+Tres baselines de features sao comparados nos dois datasets COIN:
 
 - **Datasets**: `happyT` (COIN/Happy) e `teddyT` (COIN/Teddy).
 - **Modelos**: Regressao Linear e Polynomial Ridge (`PolynomialFeatures` + `Ridge`).
 - **Conjuntos de features**:
   - `mag`: apenas magnitudes;
-  - `mag_err`: magnitudes + erros fotometricos.
+  - `mag_err`: magnitudes + erros fotometricos;
+  - `gate_err_manual`: cinco magnitudes ponderadas pelos respectivos erros.
 
 Fluxo de trabalho:
 
-1. Pre-processar os dados (`data/preprocess.py`).
+1. Pre-processar MAG/MAG_ERR com `data/preprocess.py` ou GATE-ERR com
+   `data/preprocess_gate_err.py`.
 2. Selecionar hiperparametros na **validacao** (so o Polynomial Ridge tem busca).
 3. Avaliar no teste externo, separadamente em `B`, `C` e `D`.
 
-`utils/modeling.py` concentra o codigo comum: leitura de `data/processed/Val/` ou
-`data/processed/Test/`, selecao de features e split de avaliacao, metricas na escala
-original do redshift, e os caminhos padronizados de modelos, metricas, figuras e
-tabelas.
+`utils/modeling.py` concentra o codigo comum: leitura de `data/processed/` para
+MAG/MAG_ERR ou de `data/processed Gate-Err/` para GATE-ERR, selecao de features e
+split de avaliacao, metricas na escala original do redshift, e os caminhos
+padronizados de modelos, metricas, figuras e tabelas.
 
 `evaluation/plots.py` salva o grafico de avaliacao (real vs previsto e residuos).
 A geracao da figura e **nao-fatal**: se o backend do matplotlib estiver bloqueado
@@ -103,6 +108,160 @@ Gerar apenas um modo, se necessario:
 .\.venv\Scripts\python.exe src\redshift\data\preprocess.py --dataset happyT --mode test
 ```
 
+Esse script tradicional altera somente `data/processed/` e continua sendo o
+preprocessing reproduzivel de `mag` e `mag_err`. Ele nao gera nem atualiza dados
+do GATE-ERR.
+
+## Baseline GATE-ERR manual
+
+O `gate_err_manual` e um terceiro conjunto de features. Diferentemente de
+`mag_err`, os erros fotometricos nao sao concatenados as magnitudes e nao chegam
+diretamente ao estimador. Cada erro e usado somente para reduzir a contribuicao
+da magnitude da mesma banda.
+
+Para uma banda fotometrica `j`:
+
+```text
+weight_j = exp(-gate_strength * error_norm_j)
+j_gate   = j_scaled * weight_j
+```
+
+As cinco features finais recebidas pelo modelo sao:
+
+```text
+u_gate, g_gate, r_gate, i_gate, z_gate
+```
+
+Como `error_norm` pertence ao intervalo `[0, 1]`, os pesos pertencem a
+`[exp(-gate_strength), 1]`. Uma banda com erro normalizado proximo de zero preserva quase
+toda a magnitude escalada. Uma banda com erro alto recebe peso menor. Os erros
+`uErr..zErr` nunca entram como features finais.
+
+O `gate_strength` controla a intensidade do gate:
+
+- `gate_strength = 0`: todos os pesos valem 1, portanto o baseline equivale as magnitudes
+  escaladas;
+- `gate_strength > 0`: bandas mais incertas sao atenuadas;
+- quanto maior o `gate_strength`, maior a atenuacao provocada pelo erro.
+
+### Pre-processamento intermediario
+
+O preprocessing do GATE-ERR e isolado do preprocessing de `mag` e `mag_err`. Ele
+possui um script e uma raiz de dados proprios:
+
+```text
+script: src/redshift/data/preprocess_gate_err.py
+raiz:   data/processed Gate-Err/
+```
+
+Gerar `Val` e `Test` sem alterar nada em `data/processed/`:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\data\preprocess_gate_err.py --dataset happyT
+.\.venv\Scripts\python.exe src\redshift\data\preprocess_gate_err.py --dataset teddyT
+```
+
+Estrutura produzida:
+
+```text
+data/processed Gate-Err/
+  Val/<dataset>/
+    X_train.csv
+    y_train.csv
+    X_val.csv
+    y_val.csv
+    preprocessors.joblib
+  Test/<dataset>/
+    X_train.csv
+    y_train.csv
+    X_test_B.csv
+    y_test_B.csv
+    X_test_C.csv
+    y_test_C.csv
+    X_test_D.csv
+    y_test_D.csv
+    preprocessors.joblib
+```
+
+No modo `Val`, o conjunto A e dividido de forma reproduzivel com 80% para treino,
+20% para validacao, estratificacao por redshift e `random_state=42`. Todos os
+transformadores sao ajustados somente no treino.
+
+No modo `Test`, o ajuste usa o conjunto A completo (`train + validation`) e B, C
+e D recebem somente transformacoes. O script nunca ajusta transformadores nos
+testes externos.
+
+Em cada conjunto usado para ajustar o preprocessing:
+
+1. cada magnitude recebe `StandardScaler`;
+2. cada erro fotometrico recebe `log1p`;
+3. calcula-se o percentil 99 de cada coluna de erro transformada;
+4. valores acima do p99 da respectiva banda sao saturados, sem remover objetos;
+5. um `MinMaxScaler` e ajustado nos erros transformados e clipados;
+6. o resultado do scaler e limitado ao intervalo `[0, 1]`.
+
+O resultado e uma base intermediaria independente de `gate_strength`, com dez colunas:
+
+```text
+u_scaled, g_scaled, r_scaled, i_scaled, z_scaled
+uErr_norm, gErr_norm, rErr_norm, iErr_norm, zErr_norm
+```
+
+Os cinco primeiros valores sao as magnitudes padronizadas. Os cinco ultimos sao
+os erros ja transformados e normalizados. Nao existe `RobustScaler` nesse
+pipeline, e as features finais `u_gate..z_gate` ainda nao existem nos CSVs.
+
+Somente depois que um `gate_strength` e informado, as cinco features finais sao
+construidas a partir da base intermediaria:
+
+```text
+j_gate = j_scaled * exp(-gate_strength * jErr_norm)
+```
+
+Assim, a mesma base processada pode ser reutilizada para comparar diferentes
+valores de `gate_strength`, sem refazer `log1p`, clipping, escalas ou divisao dos dados.
+
+O arquivo `preprocessors.joblib` registra os transformadores e parametros que
+permitem reproduzir a base:
+
+```text
+magnitude_scaler
+error_gate_minmax_scaler
+error_gate_p99
+gate_strength = None
+gate_feature_columns
+magnitude_columns
+magnitude_error_columns
+magnitude_scaled_columns
+error_normalized_columns
+```
+
+O `gate_strength` permanece como `None` porque nao faz parte do preprocessing. Ele sera
+definido posteriormente para construir as features finais.
+
+### Controle de vazamento
+
+No modo `Val`:
+
+```text
+fit dos transformadores: train
+transform: validation
+```
+
+No modo `Test`:
+
+```text
+fit dos transformadores: conjunto A completo (train + validation)
+transform: testes externos B, C e D
+```
+
+Nenhum p99 ou scaler e ajustado usando validacao no modo `Val`, nem usando B, C
+ou D no modo `Test`.
+
+Quando `--feature-set gate_err_manual` e usado, os scripts de modelo e busca
+selecionam automaticamente `data/processed Gate-Err/`. Para `mag` e `mag_err`,
+continuam usando `data/processed/`.
+
 ## Feature sets
 
 `mag` usa apenas magnitudes:
@@ -116,6 +275,9 @@ u, g, r, i, z
 ```text
 u, g, r, i, z, uErr, gErr, rErr, iErr, zErr
 ```
+
+`gate_err_manual` usa as cinco magnitudes ponderadas descritas na secao
+**Baseline GATE-ERR manual**.
 
 ## Splits de avaliacao
 

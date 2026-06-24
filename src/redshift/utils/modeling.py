@@ -13,9 +13,16 @@ import pandas as pd
 from pandas.errors import EmptyDataError
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
+from redshift.data.gate_err import (
+    GATE_FEATURE_COLUMNS,
+    gate_err_preprocessing_for_artifact,
+    make_gate_err_features_from_processed,
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+GATE_ERR_PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed Gate-Err"
 MODELS_DIR = PROJECT_ROOT / "models"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
 METRICS_DIR = PROJECT_ROOT / "reports" / "metrics"
@@ -26,6 +33,7 @@ ERR_FEATURES = ["uErr", "gErr", "rErr", "iErr", "zErr"]
 FEATURE_SETS = {
     "mag": MAG_FEATURES,
     "mag_err": MAG_FEATURES + ERR_FEATURES,
+    "gate_err_manual": list(GATE_FEATURE_COLUMNS),
 }
 TEST_SETS = ("B", "C", "D")
 TEST_SET_CHOICES = (*TEST_SETS, "all")
@@ -198,6 +206,21 @@ def processed_dataset_dir(
     return processed_data_dir / EVAL_SPLIT_PROCESSED_DIRS[eval_split] / dataset
 
 
+def resolve_processed_data_dir(
+    feature_set: str,
+    processed_data_dir: Path,
+) -> Path:
+    """Usa a raiz isolada do GATE-ERR quando nenhuma raiz customizada foi dada."""
+
+    if (
+        feature_set == "gate_err_manual"
+        and Path(processed_data_dir) == PROCESSED_DATA_DIR
+    ):
+        return GATE_ERR_PROCESSED_DATA_DIR
+
+    return Path(processed_data_dir)
+
+
 def read_optional_csv(path: Path) -> pd.DataFrame:
     """Le um CSV se existir; caso contrario retorna um dataframe vazio."""
 
@@ -268,6 +291,37 @@ def get_feature_cols(feature_set: str) -> list[str]:
         raise ValueError(f"Feature set invalido: {feature_set}. Opcoes: {available}")
 
     return FEATURE_SETS[feature_set]
+
+
+def prepare_model_features(
+    X_processed: pd.DataFrame,
+    feature_set: str,
+    dataset_dir: Path,
+    gate_strength: float | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Prepara a matriz final recebida pelo estimador."""
+
+    feature_cols = get_feature_cols(feature_set)
+    if feature_set != "gate_err_manual":
+        validate_feature_columns(X_processed, feature_cols)
+        return X_processed.loc[:, feature_cols].copy(), None
+
+    if gate_strength is None:
+        raise ValueError(
+            "--gate-strength e obrigatorio para o feature set gate_err_manual."
+        )
+
+    preprocessors = joblib.load(dataset_dir / "preprocessors.joblib")
+    X_gate = make_gate_err_features_from_processed(
+        X_processed=X_processed,
+        preprocessors=preprocessors,
+        gate_strength=gate_strength,
+    )
+    gate_preprocessing = gate_err_preprocessing_for_artifact(
+        preprocessors=preprocessors,
+        gate_strength=gate_strength,
+    )
+    return X_gate, gate_preprocessing
 
 
 def get_eval_data(
@@ -441,19 +495,21 @@ def save_model_artifact(
     feature_cols: list[str],
     metadata: dict[str, Any],
     path: Path,
+    preprocessing: dict[str, Any] | None = None,
 ) -> None:
     """Salva o modelo junto com colunas e metadados."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {
-            "model": model,
-            "feature_cols": feature_cols,
-            "target_transform": TARGET_TRANSFORM,
-            "metadata": metadata,
-        },
-        path,
-    )
+    artifact = {
+        "model": model,
+        "feature_cols": feature_cols,
+        "target_transform": TARGET_TRANSFORM,
+        "metadata": metadata,
+    }
+    if preprocessing is not None:
+        artifact["preprocessing"] = preprocessing
+
+    joblib.dump(artifact, path)
 
 
 def print_regression_summary(metrics: dict[str, Any]) -> None:

@@ -9,6 +9,10 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from redshift.data.gate_err import (
+    ERROR_NORMALIZED_COLUMNS,
+    MAGNITUDE_SCALED_COLUMNS,
+)
 from redshift.utils.modeling import (
     ERR_FEATURES,
     MAG_FEATURES,
@@ -75,8 +79,21 @@ def restore_original_features(
 
     preprocessors = joblib.load(dataset_dir / "preprocessors.joblib")
     magnitude_scaler = preprocessors["magnitude_scaler"]
-    magnitude_error_scaler = preprocessors["magnitude_error_scaler"]
 
+    if preprocessors.get("processed_feature_format") == "gate_err_intermediate":
+        X_original = pd.DataFrame(index=X_processed.index)
+        X_original.loc[:, MAG_FEATURES] = magnitude_scaler.inverse_transform(
+            X_processed.loc[:, MAGNITUDE_SCALED_COLUMNS]
+        )
+        log_error_values = preprocessors[
+            "error_gate_minmax_scaler"
+        ].inverse_transform(
+            X_processed.loc[:, ERROR_NORMALIZED_COLUMNS].to_numpy()
+        )
+        X_original.loc[:, ERR_FEATURES] = np.expm1(log_error_values)
+        return X_original
+
+    magnitude_error_scaler = preprocessors["magnitude_error_scaler"]
     X_original = X_processed.copy()
     X_original.loc[:, MAG_FEATURES] = magnitude_scaler.inverse_transform(
         X_original.loc[:, MAG_FEATURES]

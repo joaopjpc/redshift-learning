@@ -33,7 +33,9 @@ from redshift.utils.modeling import (
     model_figures_dir,
     model_metrics_dir,
     processed_dataset_dir,
+    prepare_model_features,
     print_regression_summary,
+    resolve_processed_data_dir,
     save_json,
     save_model_artifact,
     validate_feature_columns,
@@ -67,6 +69,7 @@ def train_linear_regression(
 def evaluate_and_save_outputs(
     model: LinearRegression,
     X_eval: pd.DataFrame,
+    X_eval_processed: pd.DataFrame,
     y_eval: pd.Series,
     feature_cols: list[str],
     dataset: str,
@@ -77,13 +80,29 @@ def evaluate_and_save_outputs(
     models_dir: Path,
     figures_dir: Path,
     metrics_dir: Path,
+    gate_strength: float | None = None,
+    preprocessing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Avalia um split e salva modelo, metricas e grafico."""
 
     validate_feature_columns(X_eval, feature_cols)
     eval_pred = model.predict(X_eval.loc[:, feature_cols])
     artifact_suffix = eval_artifact_suffix(eval_split, test_set)
-    experiment_name = f"{MODEL_NAME}_{feature_set}"
+    gate_suffix = (
+        f"_strength{gate_strength:g}"
+        if feature_set == "gate_err_manual"
+        else ""
+    )
+    experiment_name = f"{MODEL_NAME}_{feature_set}{gate_suffix}"
+    model_params: dict[str, Any] = {"fit_intercept": bool(model.fit_intercept)}
+    if feature_set == "gate_err_manual":
+        model_params.update(
+            {
+                "gate_strength": gate_strength,
+                "gate_weight": "exp(-gate_strength * error_norm)",
+                "gate_error_clipping_percentile": 99,
+            }
+        )
     metadata = build_metadata(
         experiment_name=experiment_name,
         dataset=dataset,
@@ -91,7 +110,7 @@ def evaluate_and_save_outputs(
         feature_set=feature_set,
         eval_split=eval_split,
         feature_cols=feature_cols,
-        model_params={"fit_intercept": bool(model.fit_intercept)},
+        model_params=model_params,
         test_set=test_set,
     )
     metrics: dict[str, Any] = {
@@ -100,7 +119,7 @@ def evaluate_and_save_outputs(
     }
     if eval_split == "test":
         metrics["slice_metrics"] = build_slice_metrics(
-            X_eval_processed=X_eval,
+            X_eval_processed=X_eval_processed,
             y_true=y_eval,
             y_pred=eval_pred,
             split_name=eval_split,
@@ -119,6 +138,7 @@ def evaluate_and_save_outputs(
             dataset=dataset,
             filename=f"{experiment_name}_{artifact_suffix}.joblib",
         ),
+        preprocessing=preprocessing,
     )
     save_json(
         metrics,
@@ -130,7 +150,7 @@ def evaluate_and_save_outputs(
             dataset=dataset,
             filename=(
                 f"{MODEL_NAME}_{dataset_metrics_dir_name(dataset)}_"
-                f"{feature_set}_{artifact_suffix}_metrics.json"
+                f"{feature_set}{gate_suffix}_{artifact_suffix}_metrics.json"
             ),
         ),
     )
@@ -156,6 +176,7 @@ def run_experiment(
     feature_set: str = "mag",
     eval_split: str = "val",
     test_set: str | None = None,
+    gate_strength: float | None = None,
     processed_data_dir: Path = PROCESSED_DATA_DIR,
     models_dir: Path = MODELS_DIR,
     figures_dir: Path = FIGURES_DIR,
@@ -163,19 +184,37 @@ def run_experiment(
 ) -> dict[str, Any] | list[dict[str, Any]]:
     """Executa o experimento de Regressao Linear e salva artefatos."""
 
+    processed_data_dir = resolve_processed_data_dir(
+        feature_set,
+        processed_data_dir,
+    )
     dataset_dir = processed_dataset_dir(processed_data_dir, eval_split, dataset)
     if not dataset_dir.exists():
         raise FileNotFoundError(f"Pasta de dados processados nao encontrada: {dataset_dir}")
 
     feature_cols = get_feature_cols(feature_set)
     if eval_split == "test" and test_set == "all":
-        X_train = pd.read_csv(dataset_dir / "X_train.csv")
+        X_train_processed = pd.read_csv(dataset_dir / "X_train.csv")
         y_train = pd.read_csv(dataset_dir / "y_train.csv").squeeze("columns")
+        X_train, preprocessing = prepare_model_features(
+            X_processed=X_train_processed,
+            feature_set=feature_set,
+            dataset_dir=dataset_dir,
+            gate_strength=gate_strength,
+        )
         model = train_linear_regression(X_train, y_train, feature_cols)
 
         results: list[dict[str, Any]] = []
         for split_name in TEST_SETS:
-            X_eval = pd.read_csv(dataset_dir / f"X_test_{split_name}.csv")
+            X_eval_processed = pd.read_csv(
+                dataset_dir / f"X_test_{split_name}.csv"
+            )
+            X_eval, _ = prepare_model_features(
+                X_processed=X_eval_processed,
+                feature_set=feature_set,
+                dataset_dir=dataset_dir,
+                gate_strength=gate_strength,
+            )
             y_eval = pd.read_csv(dataset_dir / f"y_test_{split_name}.csv").squeeze(
                 "columns"
             )
@@ -183,6 +222,7 @@ def run_experiment(
                 evaluate_and_save_outputs(
                     model=model,
                     X_eval=X_eval,
+                    X_eval_processed=X_eval_processed,
                     y_eval=y_eval,
                     feature_cols=feature_cols,
                     dataset=dataset,
@@ -193,21 +233,49 @@ def run_experiment(
                     models_dir=models_dir,
                     figures_dir=figures_dir,
                     metrics_dir=metrics_dir,
+                    gate_strength=gate_strength,
+                    preprocessing=preprocessing,
                 )
             )
         return results
 
     test_set_to_load = test_set if eval_split == "test" else None
-    X_train, X_val, X_test, y_train, y_val, y_test = load_processed_split(
+    (
+        X_train_processed,
+        X_val_processed,
+        X_test_processed,
+        y_train,
+        y_val,
+        y_test,
+    ) = load_processed_split(
         dataset_dir,
         test_set=test_set_to_load,
     )
-    X_eval, y_eval = get_eval_data(eval_split, X_val, y_val, X_test, y_test)
+    X_eval_processed, y_eval = get_eval_data(
+        eval_split,
+        X_val_processed,
+        y_val,
+        X_test_processed,
+        y_test,
+    )
+    X_train, preprocessing = prepare_model_features(
+        X_processed=X_train_processed,
+        feature_set=feature_set,
+        dataset_dir=dataset_dir,
+        gate_strength=gate_strength,
+    )
+    X_eval, _ = prepare_model_features(
+        X_processed=X_eval_processed,
+        feature_set=feature_set,
+        dataset_dir=dataset_dir,
+        gate_strength=gate_strength,
+    )
 
     model = train_linear_regression(X_train, y_train, feature_cols)
     return evaluate_and_save_outputs(
         model=model,
         X_eval=X_eval,
+        X_eval_processed=X_eval_processed,
         y_eval=y_eval,
         feature_cols=feature_cols,
         dataset=dataset,
@@ -218,6 +286,8 @@ def run_experiment(
         models_dir=models_dir,
         figures_dir=figures_dir,
         metrics_dir=metrics_dir,
+        gate_strength=gate_strength,
+        preprocessing=preprocessing,
     )
 
 
@@ -237,7 +307,19 @@ def parse_args() -> argparse.Namespace:
         "--feature-set",
         choices=list(FEATURE_SETS),
         default="mag",
-        help="Conjunto de features: mag usa magnitudes; mag_err usa magnitudes e erros.",
+        help=(
+            "Conjunto de features: mag, mag_err ou gate_err_manual "
+            "(magnitudes ponderadas pelos erros)."
+        ),
+    )
+    parser.add_argument(
+        "--gate-strength",
+        type=float,
+        default=None,
+        help=(
+            "Intensidade do peso exp(-gate_strength * error_norm) "
+            "no gate_err_manual."
+        ),
     )
     parser.add_argument(
         "--eval-split",
@@ -288,6 +370,7 @@ def main() -> None:
         feature_set=args.feature_set,
         eval_split=args.eval_split,
         test_set=args.test_set,
+        gate_strength=args.gate_strength,
         processed_data_dir=args.processed_data_dir,
         models_dir=args.models_dir,
         figures_dir=args.figures_dir,
