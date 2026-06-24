@@ -3,23 +3,28 @@
 Este arquivo resume os dois baselines testados nos conjuntos externos B, C e D com 
 Linear Regression + Polynomial Features + Regularization Ridge no dataset TEDDY
 
-## Baselines avaliados
+## Métricas reportadas
 
-| Baseline | Feature set | Modelo |
+| Métrica | Interpretação | Melhor direção |
 |---|---|---|
-| `mag` | `u`, `g`, `r`, `i`, `z` | PolynomialFeatures+Ridge |
-| `mag_err` | `u`, `g`, `r`, `i`, `z`, `uErr`, `gErr`, `rErr`, `iErr`, `zErr` | PolynomialFeatures+Ridge |
+| MAE | erro absoluto médio | menor |
+| RMSE | raiz do erro quadrático médio; penaliza mais erros grandes | menor |
+| R² | proporção da variância explicada | maior |
+| Bias | média do erro de previsão | mais próximo de 0 |
+| NMAD | métrica robusta de dispersão do erro | menor |
+| Outliers catastróficos | fração de objetos com erro acima do limiar configurado | menor |
+| Predições negativas | número de previsões de redshift negativo | menor |
 
 ## Resumo comparativo
 
-| Baseline | Teste | n | MAE | RMSE | R² | Bias | NMAD | Out Cat | Prev neg |
-|---|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `mag` | B | 74559 | 0.0240 | 0.0350 | 0.8411 | -0.0000 | 0.0190 | 0.14% | 0 |
-| `mag` | C | 97980 | 0.0254 | 0.0376 | 0.8571 | -0.0005 | 0.0195 | 0.23% | 0 |
-| `mag` | D | 75925 | 0.1076 | 0.5041 | -4.3740 | 0.0817 | 0.0663 | 11.55% | 1903 |
-| `mag_err` | B | 74559 | 0.0233 | 0.0345 | 0.8456 | 0.0000 | 0.0181 | 0.15% | 1 |
-| `mag_err` | C | 97980 | 0.0246 | 0.0372 | 0.8604 | -0.0007 | 0.0185 | 0.24% | 1 |
-| `mag_err` | D | 75925 | 0.1006 | 0.5427 | -5.2294 | 0.0050 | 0.0441 | 8.11% | 1187 |
+| Teste | Baseline | n | MAE | RMSE | R² | Bias | NMAD | Out Cat | Prev neg |
+|:---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| B | `mag` | 74559 | 0.0240 | 0.0350 | 0.8411 | -0.0000 | 0.0190 | 0.14% | 0 |
+| B | `mag_err` | 74559 | 0.0233 | 0.0345 | 0.8456 | 0.0000 | 0.0181 | 0.15% | 1 |
+| C | `mag` | 97980 | 0.0254 | 0.0376 | 0.8571 | -0.0005 | 0.0195 | 0.23% | 0 |
+| C | `mag_err` | 97980 | 0.0246 | 0.0372 | 0.8604 | -0.0007 | 0.0185 | 0.24% | 1 |
+| D | `mag` | 75925 | 0.1076 | 0.5041 | -4.3740 | 0.0817 | 0.0663 | 11.55% | 1903 |
+| D | `mag_err` | 75925 | 0.1006 | 0.5427 | -5.2294 | 0.0050 | 0.0441 | 8.11% | 1187 |
 
 
 
