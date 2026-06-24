@@ -5,19 +5,21 @@ Linear Regression + Polynomial Features + Regularization Ridge no dataset TEDDY
 
 ## Baselines avaliados
 
-| Baseline |                             Feature set                         |            Modelo        |
-|  `mag`   |                    `u`, `g`, `r`, `i`, `z`                      | PolynomialFeatures+Ridge |
-| `mag_err`| `u`, `g`, `r`, `i`, `z`, `uErr`, `gErr`, `rErr`, `iErr`, `zErr` | PolynomialFeatures+Ridge |
+| Baseline | Feature set | Modelo |
+|---|---|---|
+| `mag` | `u`, `g`, `r`, `i`, `z` | PolynomialFeatures+Ridge |
+| `mag_err` | `u`, `g`, `r`, `i`, `z`, `uErr`, `gErr`, `rErr`, `iErr`, `zErr` | PolynomialFeatures+Ridge |
 
 ## Resumo comparativo
 
-| Baseline |Teste|   n   |   MAE  |  RMSE  |   R²    | Bias    |  NMAD  | Out Cat| negat|
-|   `mag`  |  B  | 74559 | 0.0240 | 0.0350 | 0.8411  | -0.0000 | 0.0190 | 0.14%  | 0    |
-|   `mag`  |  C  | 97980 | 0.0254 | 0.0376 | 0.8571  | -0.0005 | 0.0195 | 0.23%  | 0    |
-|   `mag`  |  D  | 75925 | 0.1076 | 0.5041 | -4.3740 | 0.0817  | 0.0663 | 11.55% | 1903 |
-| `mag_err`|  B  | 74559 | 0.0233 | 0.0345 | 0.8456  | 0.0000  | 0.0181 | 0.15%  | 1    |
-| `mag_err`|  C  | 97980 | 0.0246 | 0.0372 | 0.8604  | -0.0007 | 0.0185 | 0.24%  | 1    |
-| `mag_err`|  D  | 75925 | 0.1006 | 0.5427 | -5.2294 | 0.0050  | 0.0441 | 8.11%  | 1187 |
+| Baseline | Teste | n | MAE | RMSE | R² | Bias | NMAD | Out Cat | Prev neg |
+|---|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `mag` | B | 74559 | 0.0240 | 0.0350 | 0.8411 | -0.0000 | 0.0190 | 0.14% | 0 |
+| `mag` | C | 97980 | 0.0254 | 0.0376 | 0.8571 | -0.0005 | 0.0195 | 0.23% | 0 |
+| `mag` | D | 75925 | 0.1076 | 0.5041 | -4.3740 | 0.0817 | 0.0663 | 11.55% | 1903 |
+| `mag_err` | B | 74559 | 0.0233 | 0.0345 | 0.8456 | 0.0000 | 0.0181 | 0.15% | 1 |
+| `mag_err` | C | 97980 | 0.0246 | 0.0372 | 0.8604 | -0.0007 | 0.0185 | 0.24% | 1 |
+| `mag_err` | D | 75925 | 0.1006 | 0.5427 | -5.2294 | 0.0050 | 0.0441 | 8.11% | 1187 |
 
 
 

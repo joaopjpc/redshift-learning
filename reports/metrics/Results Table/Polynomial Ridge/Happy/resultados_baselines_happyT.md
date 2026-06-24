@@ -5,19 +5,21 @@ Linear Regression + Polynomial Features + Regularization Ridge no dataset HAPPY
 
 ## Baselines avaliados
 
-| Baseline |                           Feature set                           |            Modelo        |
-| `mag`    |                       `u`, `g`, `r`, `i`, `z`                   | PolynomialFeatures+Ridge |
-| `mag_err`| `u`, `g`, `r`, `i`, `z`, `uErr`, `gErr`, `rErr`, `iErr`, `zErr` | PolynomialFeatures+Ridge |
+| Baseline | Feature set | Modelo |
+|---|---|---|
+| `mag` | `u`, `g`, `r`, `i`, `z` | PolynomialFeatures+Ridge |
+| `mag_err` | `u`, `g`, `r`, `i`, `z`, `uErr`, `gErr`, `rErr`, `iErr`, `zErr` | PolynomialFeatures+Ridge |
 
 ## Resumo comparativo
 
-| Baseline |Teste|   n   |   MAE  |  RMSE  |   R²   |  Bias   |  NMAD  | Out Cat| Prev neg|
-|   `mag`  |  B  | 74900 | 0.0429 | 0.0703 | 0.8892 | -0.0001 | 0.0321 | 1.57%  |   805   |
-|   `mag`  |  C  | 60315 | 0.0975 | 0.1311 | 0.4862 |  0.0422 | 0.0732 | 10.97% |   202   |
-|   `mag`  |  D  | 74642 | 0.1328 | 0.1880 | 0.2741 |  0.0254 | 0.0989 | 18.08% |   447   |
-| `mag_err`|  B  | 74900 | 0.0378 | 0.0660 | 0.9025 |  0.0000 | 0.0269 | 1.31%  |   267   | 
-| `mag_err`|  C  | 60315 | 0.0842 | 0.1206 | 0.5652 |  0.0209 | 0.0636 | 7.62%  |   187   |
-| `mag_err`|  D  | 74642 | 0.1252 | 0.2157 | 0.0451 | -0.0010 | 0.0905 | 15.18% |   301   |
+| Baseline | Teste | n | MAE | RMSE | R² | Bias | NMAD | Out Cat | Prev neg |
+|---|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `mag` | B | 74900 | 0.0429 | 0.0703 | 0.8892 | -0.0001 | 0.0321 | 1.57% | 805 |
+| `mag` | C | 60315 | 0.0975 | 0.1311 | 0.4862 | 0.0422 | 0.0732 | 10.97% | 202 |
+| `mag` | D | 74642 | 0.1328 | 0.1880 | 0.2741 | 0.0254 | 0.0989 | 18.08% | 447 |
+| `mag_err` | B | 74900 | 0.0378 | 0.0660 | 0.9025 | 0.0000 | 0.0269 | 1.31% | 267 |
+| `mag_err` | C | 60315 | 0.0842 | 0.1206 | 0.5652 | 0.0209 | 0.0636 | 7.62% | 187 |
+| `mag_err` | D | 74642 | 0.1252 | 0.2157 | 0.0451 | -0.0010 | 0.0905 | 15.18% | 301 |
 
 
 
