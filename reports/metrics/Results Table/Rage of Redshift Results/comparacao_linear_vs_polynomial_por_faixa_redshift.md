@@ -1,8 +1,8 @@
-# Compara??o Linear Regression ? Polynomial Ridge por faixa de redshift
+# Comparação Linear Regression × Polynomial Ridge por faixa de redshift
 
-Compara??o direta dos modelos em cada dataset, teste externo, baseline e faixa de redshift.
+Comparação direta dos modelos em cada dataset, teste externo, baseline e faixa de redshift.
 
-Os valores s?o apresentados como `Linear / Poli`. Em cada faixa, o melhor valor entre as seis combina??es (modelo ? baseline) est? em **negrito**: menor para MAE, RMSE, NMAD e predi??es negativas; mais pr?ximo de zero para Bias.
+Os valores são apresentados como `Linear / Poli`. Em cada faixa, o melhor valor entre as seis combinações (modelo × baseline) está em **negrito**: menor para MAE, RMSE, NMAD e predições negativas; mais próximo de zero para Bias.
 
 ## happyT
 

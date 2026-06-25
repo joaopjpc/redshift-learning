@@ -1,8 +1,8 @@
 # Desempenho por faixa de redshift - teddyT - Linear Regression
 
-Resultados dos baselines `mag`, `mag_err` e `gate-err` nos testes externos `B`, `C` e `D`. As m?tricas s?o calculadas separadamente dentro de cada faixa de redshift.
+Resultados dos baselines `mag`, `mag_err` e `gate-err` nos testes externos `B`, `C` e `D`. As métricas são calculadas separadamente dentro de cada faixa de redshift.
 
-Em cada faixa, o melhor valor entre os tr?s baselines est? em **negrito**: menor para MAE, RMSE, NMAD e predi??es negativas; mais pr?ximo de zero para Bias.
+Em cada faixa, o melhor valor entre os três baselines está em **negrito**: menor para MAE, RMSE, NMAD e predições negativas; mais próximo de zero para Bias.
 
 ## Teste B
 

@@ -1,24 +1,24 @@
-# Compara??o Linear Regression ? Polynomial Ridge
+# Comparação Linear Regression × Polynomial Ridge
 
-Compara??o direta dos dois modelos nos baselines `mag`, `mag_err` e `gate-err`, avaliados nos testes externos `B`, `C` e `D`.
+Comparação direta dos dois modelos nos baselines `mag`, `mag_err` e `gate-err`, avaliados nos testes externos `B`, `C` e `D`.
 
-Todos os valores foram extra?dos diretamente dos JSONs em `reports/metrics/Tests/`. Em cada teste, o melhor valor entre as seis combina??es (modelo ? baseline) est? em **negrito**.
+Todos os valores foram extraídos diretamente dos JSONs em `reports/metrics/Tests/`. Em cada teste, o melhor valor entre as seis combinações (modelo × baseline) está em **negrito**.
 
-## M?tricas reportadas
+## Métricas reportadas
 
-| M?trica | Interpreta??o | Melhor dire??o |
+| Métrica | Interpretação | Melhor direção |
 |---|---|---|
-| MAE | erro absoluto m?dio | menor |
-| RMSE | raiz do erro quadr?tico m?dio; penaliza mais erros grandes | menor |
-| R? | propor??o da vari?ncia explicada | maior |
-| Bias | m?dia do erro de previs?o | mais pr?ximo de 0 |
-| NMAD | m?trica robusta de dispers?o do erro | menor |
-| Outliers catastr?ficos | fra??o de objetos com erro acima do limiar configurado | menor |
-| Predi??es negativas | n?mero de previs?es de redshift negativo | menor |
+| MAE | erro absoluto médio | menor |
+| RMSE | raiz do erro quadrático médio; penaliza mais erros grandes | menor |
+| R² | proporção da variância explicada | maior |
+| Bias | média do erro de previsão | mais próximo de 0 |
+| NMAD | métrica robusta de dispersão do erro | menor |
+| Outliers catastróficos | fração de objetos com erro acima do limiar configurado | menor |
+| Predições negativas | número de previsões de redshift negativo | menor |
 
 ## happyT
 
-| Teste | Baseline | Modelo | N | MAE | RMSE | R? | Bias | NMAD | Out Cat | Prev neg |
+| Teste | Baseline | Modelo | N | MAE | RMSE | R² | Bias | NMAD | Out Cat | Prev neg |
 |:---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | B | `mag` | Linear | 74900 | 0.0484 | 0.0767 | 0.8684 | -0.0003 | 0.0369 | 1.90% | 1631 |
 | B | `mag` | Poli | 74900 | 0.0429 | 0.0703 | 0.8892 | -0.0001 | 0.0321 | 1.57% | 805 |
@@ -43,7 +43,7 @@ Todos os valores foram extra?dos diretamente dos JSONs em `reports/metrics/Tests
 
 ## teddyT
 
-| Teste | Baseline | Modelo | N | MAE | RMSE | R? | Bias | NMAD | Out Cat | Prev neg |
+| Teste | Baseline | Modelo | N | MAE | RMSE | R² | Bias | NMAD | Out Cat | Prev neg |
 |:---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | B | `mag` | Linear | 74559 | 0.0266 | 0.0377 | 0.8161 | -0.0001 | 0.0216 | **0.10%** | **0** |
 | B | `mag` | Poli | 74559 | 0.0240 | 0.0350 | 0.8411 | -0.0000 | 0.0190 | 0.14% | **0** |
