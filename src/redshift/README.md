@@ -13,6 +13,7 @@ src/redshift/
     gate_err.py
   evaluation/
     plots.py
+    slices.py
   models/
     linear_regression.py
     polynomial_ridge.py
@@ -38,7 +39,9 @@ Fluxo de trabalho:
 
 1. Pre-processar MAG/MAG_ERR com `data/preprocess.py` ou GATE-ERR com
    `data/preprocess_gate_err.py`.
-2. Selecionar hiperparametros na **validacao** (so o Polynomial Ridge tem busca).
+2. Selecionar hiperparametros na **validacao**: o Polynomial Ridge busca
+   `degree`/`alpha`; o GATE-ERR ainda busca `gate_strength` (na Regressao Linear ha
+   um script dedicado para isso).
 3. Avaliar no teste externo, separadamente em `B`, `C` e `D`.
 
 `utils/modeling.py` concentra o codigo comum: leitura de `data/processed/` para
@@ -50,6 +53,9 @@ padronizados de modelos, metricas, figuras e tabelas.
 A geracao da figura e **nao-fatal**: se o backend do matplotlib estiver bloqueado
 pelo sistema operacional, a execucao apenas avisa e continua, preservando metricas,
 modelos e tabelas.
+
+`evaluation/slices.py` calcula as metricas por faixa (redshift, magnitude `r` e
+erro fotometrico medio), usadas apenas na avaliacao final (`--eval-split test`).
 
 ## Pre-processamento (`data/preprocess.py`)
 
@@ -346,6 +352,43 @@ Observacao: quando `rmse` fica muito maior que `nmad`, isso normalmente indica
 **poucos pontos catastroficos** (o RMSE e dominado por eles; o NMAD, baseado na
 mediana, ignora a cauda).
 
+## Metricas por faixa (apenas na avaliacao final)
+
+Quando `--eval-split test`, alem das metricas globais cada JSON em
+`reports/metrics/Tests/` recebe um bloco `slice_metrics` com o desempenho **dentro
+de subconjuntos** dos objetos. O calculo esta em `evaluation/slices.py` e so roda
+no teste, nunca na validacao.
+
+Sao tres recortes:
+
+```text
+by_redshift            -> faixas fixas de redshift verdadeiro
+by_r_magnitude         -> quartis da magnitude r (escala original)
+by_photometric_error   -> quartis do erro fotometrico medio das 5 bandas
+```
+
+- `by_redshift` usa bordas fixas `[0, 0.1, 0.2, 0.4, 0.6, inf)` (intervalos
+  fechados a esquerda) sobre o **redshift verdadeiro**.
+- `by_r_magnitude` e `by_photometric_error` usam **quartis** (4 faixas de tamanho
+  parecido) das respectivas variaveis.
+- Para criar faixas interpretaveis, as features escaladas sao revertidas para a
+  escala original com o `preprocessors.joblib` do dataset (StandardScaler e
+  RobustScaler/MinMax invertidos, depois `expm1` para desfazer o `log1p` dos erros).
+  Vale tambem para o GATE-ERR, cuja base intermediaria guarda magnitudes escaladas
+  e erros normalizados.
+
+Em cada faixa sao calculadas **apenas** estas metricas:
+
+```text
+mae, rmse, bias, negative_redshift_predictions, nmad
+```
+
+Nao ha `nmad_se`, `r2` nem fracao de outliers por faixa. O NMAD de cada faixa
+recentraliza na **mediana daquela faixa**, entao mede so a dispersao interna e nao
+enxerga o vies entre faixas (que aparece na coluna `bias`). Faixas com poucos
+objetos (ex.: `z 0..0.1`) tem NMAD estatisticamente fragil, ainda mais por nao
+terem erro-padrao estimado.
+
 ## Organizacao de metricas, modelos, figuras e tabelas
 
 ```text
@@ -399,6 +442,13 @@ Rodar MAG+ERR em validacao:
 
 ```powershell
 .\.venv\Scripts\python.exe src\redshift\models\linear_regression.py --dataset happyT --feature-set mag_err --eval-split val
+```
+
+Rodar GATE-ERR em validacao (exige `--gate-strength`; le de `data/processed Gate-Err/`,
+que precisa ter sido gerado antes com `preprocess_gate_err.py`):
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\models\linear_regression.py --dataset happyT --feature-set gate_err_manual --eval-split val --gate-strength 0.1
 ```
 
 Rodar avaliacao final em teste:
@@ -467,6 +517,12 @@ Com MAG+ERR:
 .\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set mag_err --eval-split val --degree 2 --alpha 1
 ```
 
+Com GATE-ERR (exige `--gate-strength`; le de `data/processed Gate-Err/`):
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\models\polynomial_ridge.py --dataset happyT --feature-set gate_err_manual --eval-split val --degree 2 --alpha 1 --gate-strength 0.1
+```
+
 Avaliacao final em teste, ja com o `degree` e o `alpha` escolhidos na validacao:
 
 ```powershell
@@ -492,7 +548,12 @@ Grade padrao:
 ```python
 degrees = [1, 2]
 alphas = [0.1, 0.5, 1, 2, 5, 10, 50, 100, 1000]
+gate_strengths = [0.1, 0.5, 1.0, 5.0]   # apenas para o feature set gate_err_manual
 ```
+
+Para `mag` e `mag_err`, a busca varre apenas `degree` x `alpha`. Para
+`gate_err_manual`, ela varre `degree` x `alpha` x `gate_strength`, com a grade de
+intensidades acima (ajustavel por `--gate-strengths`).
 
 A busca treina cada combinacao em `train`, avalia em `validation` e salva uma tabela
 resumo. A escolha do melhor conjunto de hiperparametros usa a **regra de 1 desvio-padrao**
@@ -589,6 +650,12 @@ Rodar busca em MAG+ERR:
 .\.venv\Scripts\python.exe src\redshift\training\search_polynomial_ridge.py --dataset happyT --feature-set mag_err --eval-split val
 ```
 
+Rodar busca em GATE-ERR (varre tambem `gate_strength`):
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\training\search_polynomial_ridge.py --dataset happyT --feature-set gate_err_manual --eval-split val
+```
+
 Customizar a grade:
 
 ```powershell
@@ -597,6 +664,45 @@ Customizar a grade:
 
 A busca salva: JSON individual por combinacao, grafico individual por combinacao e a
 tabela resumo ordenada pela regra de 1-SE em `reports/tables/...`.
+
+## Busca da intensidade do GATE-ERR (Regressao Linear)
+
+Script:
+
+```text
+src/redshift/training/search_gate_strength_linear_regression.py
+```
+
+A Regressao Linear nao tem hiperparametro proprio, mas o `gate_err_manual`
+introduz o `gate_strength`. Este script testa varias intensidades **somente na
+validacao** e escolhe a melhor.
+
+Grade padrao:
+
+```python
+gate_strengths = [0.1, 0.5, 1.0, 5.0]
+```
+
+Para cada intensidade, treina em `train`, avalia em `validation` e salva uma linha
+na tabela resumo. Diferente do Polynomial Ridge, a selecao **nao usa a regra de 1
+desvio-padrao**: escolhe diretamente o **menor NMAD** (desempate por menor `mae` e,
+em seguida, menor `gate_strength`). A configuracao escolhida fica marcada com
+`selected = True` na primeira linha.
+
+Rodar a busca:
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\training\search_gate_strength_linear_regression.py --dataset happyT
+```
+
+Customizar as intensidades (inclui `0`, que reproduz o baseline `mag`):
+
+```powershell
+.\.venv\Scripts\python.exe src\redshift\training\search_gate_strength_linear_regression.py --dataset happyT --gate-strengths 0 0.1 0.5 1 5
+```
+
+A tabela e salva em
+`reports/tables/Model Selection/<dataset>/gate_err_manual/linear_regression/`.
 
 ## Teddy
 
