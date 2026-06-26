@@ -118,3 +118,7 @@ os comandos por modelo e dataset — veja:
 
 As conclusões comparativas entre baselines e modelos estão consolidadas em
 [reports/metrics/Results Table/](reports/metrics/Results%20Table).
+
+## Referência
+
+FIALHO, Raphael Correia de Souza. *Estimando redshifts fotométricos com regularização sensível aos erros*. 2021. 126 f. Dissertação (Mestrado em Ciência da Computação) – Centro Federal de Educação Tecnológica Celso Suckow da Fonseca, CEFET/RJ, Rio de Janeiro, 2021.
